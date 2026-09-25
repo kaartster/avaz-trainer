@@ -1,0 +1,25 @@
+# Scale positions in cents above the tonic (0). These are placeholders.
+# Replace them with values from `avaz histogram` once calibrated against the teacher.
+#
+# A koron lowers a note by roughly a quarter tone and a sori raises it by roughly a
+# quarter tone, but the exact amount depends on the singer and the dastgah. That is why
+# every position is an explicit number here instead of a formula.
+#
+# Each entry can be a plain list of cents, or a mapping with "positions" and optional
+# "labels" (one label per position, used on the guide lines).
+
+shur:
+  positions: [0, 150, 300, 500, 700, 800, 1000, 1200]
+  labels: ["tonic", "2k", "3", "4", "5", "6b", "7b", "octave"]
+
+mahur:
+  positions: [0, 200, 400, 500, 700, 900, 1100, 1200]
+  labels: ["tonic", "2", "3", "4", "5", "6", "7", "octave"]
+
+# Dashti is usually described as an avaz of Shur. Relative to the Dashti shahed
+# (the note the melody keeps returning to) the neighborhood is approximately:
+# shahed, a whole tone below it (often with a koron variant used as a "moteghayyer"),
+# the Shur tonic a fifth below. These starting positions treat the shahed as 0.
+dashti:
+  positions: [0, 150, 300, 500, 700, 800, 1000, 1200]
+  labels: ["tonic", "2k", "3", "4", "5", "6b", "7b", "octave"]

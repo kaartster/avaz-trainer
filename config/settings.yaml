@@ -1,0 +1,58 @@
+# Audio parameters and display settings. All values here are starting points.
+
+audio:
+  sample_rate: 44100        # samples per second. 48000 also fine if that's your device default
+  frame_length: 2048        # samples per analysis window (~46 ms at 44100 Hz)
+  hop_length: 256           # samples between successive pitch estimates (~5.8 ms)
+  fmin_hz: 70               # lowest pitch we try to detect
+  fmax_hz: 1000             # highest pitch we try to detect
+  input_device: null        # null = system default. Use `avaz devices` to see the list
+  output_device: null
+
+tonic:
+  teacher_hz: 185.0         # Dashti shahed (F sharp). null = estimate from each recording
+  mine_hz: 146.8            # my own tonic: D3 (Re), a major third below the teacher's F sharp
+
+live:
+  smoothing_frames: 3       # median filter width for the live curve. 1 = no smoothing
+  history_seconds: 8        # how many seconds of pitch history the live chart shows
+  cents_range: [-700, 1900] # vertical axis range in cents relative to tonic
+
+offline:
+  # pyin decides voiced/unvoiced on its own (Viterbi path). Set this above 0 to also
+  # require pyin's voicing probability to exceed it. On real recordings that
+  # probability is low even on clear notes, so 0 (off) is the recommended default
+  voiced_prob_threshold: 0.0
+  # remove voiced islands shorter than this (seconds); they are usually clicks or breath
+  min_voiced_seconds: 0.03
+  # blank frames further than this from the recording's median pitch (cents). Catches
+  # detector slips on noise left over from vocal separation. 0 disables it
+  max_cents_from_median: 1500
+
+slicer:
+  silence_db: -40           # frames quieter than this (dBFS) count as silence
+  min_pause_seconds: 0.6    # a silence must be at least this long to split phrases
+  min_phrase_seconds: 0.8   # ignore "phrases" shorter than this
+  pad_seconds: 0.1          # keep this much audio before and after each phrase
+  response_margin_seconds: 0.5  # extra silence after each phrase in call-and-response tracks
+
+practice:
+  response_margin_seconds: 0.5  # extra time after the phrase length for my answer (mode "after")
+  loop_gap_seconds: 0.7         # pause between repetitions when looping
+  fold_octave: true             # shift my curve by whole octaves to sit on the teacher's
+  latency_compensation: auto    # seconds to shift my curve left, or "auto" (sound card latency)
+  start_on_voice: true          # mode "after": wait after the phrase until I start singing
+  onset_grace_seconds: 0.4      # ignore the mic this long after the phrase (speaker bleed)
+  onset_rms_db: -40             # how loud the mic must be to count as singing (dBFS)
+  onset_voiced_frames: 6        # consecutive pitched frames needed to trigger (6 x 5.8 ms)
+  onset_preroll_seconds: 0.15   # audio kept from just before the trigger
+  wait_timeout_seconds: 15      # give up waiting for my voice after this long
+
+scoring:
+  tolerance_cents: 25       # a frame within this deviation counts as "in tune"
+
+colors:
+  teacher: "#1f77b4"
+  mine: "#d62728"
+  guide: "#888888"
+  tonic: "#2ca02c"

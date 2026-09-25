@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Virtual environment
+.venv/
+
+# Data (teacher recordings, phrases, attempts)
+data/
+
+# Editors
+.vscode/
+.idea/
