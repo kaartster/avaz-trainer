@@ -243,6 +243,7 @@ def build_pitch_stream(settings: dict, tonic_hz: float, backend: str = "auto",
     detector = create_detector(backend, sample_rate=sr,
                                frame_length=int(audio.get("frame_length", 2048)),
                                fmin=float(audio.get("fmin_hz", 70)),
-                               fmax=float(audio.get("fmax_hz", 1000)))
+                               fmax=float(audio.get("fmax_hz", 1000)),
+                               silence_rms=10 ** (float(audio.get("pitch_silence_db", -46)) / 20))
     smooth = live.get("smoothing_frames", 3) if smoothing_frames is None else smoothing_frames
     return PitchStream(detector, tonic_hz, hop, smoothing_frames=int(smooth))

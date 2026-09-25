@@ -268,9 +268,9 @@ class SongView(QtWidgets.QMainWindow):
                                        same_key=self.same_key)
                 record_score(wav, result, "live")
                 msg += f"    score: {result.pct_within:.0f}% within {tol:.0f}c, mean {result.mad:.0f}c"
-                if abs(result.median_offset) >= 10:
-                    word = "sharp" if result.median_offset > 0 else "flat"
-                    msg += f", {word} by {abs(result.median_offset):.0f}c overall"
+                if abs(result.key_offset) >= 10:
+                    word = "sharp" if result.key_offset > 0 else "flat"
+                    msg += f", {word} by {abs(result.key_offset):.0f}c overall"
             except Exception as exc:
                 msg += f"    (score failed: {exc})"
         self.statusBar().showMessage(f"{msg}    {HELP}")

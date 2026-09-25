@@ -134,7 +134,9 @@ need to breathe does not count. Your curve is drawn so that the moment you start
 singing lines up with the moment the teacher starts singing in that stretch. The
 first `practice.onset_grace_seconds` after the pause are ignored, because the
 speakers are still ringing with the teacher's last note. Press V to turn voice
-start off.
+start off. Voice start listens for `practice.onset_rms_db` (-50 dBFS), and live
+pitch detection ignores anything under `audio.pitch_silence_db` (-55 dBFS). Both
+sit well above the Surface's room noise (about -76 dBFS) and below soft singing.
 
 `--out-dir` changes where phrases are saved. Speed control is not available in
 this mode yet.
@@ -172,10 +174,16 @@ dropped, my curve is shifted by whole octaves onto the teacher's, and the two ar
 aligned with dynamic time warping (DTW) so small timing differences do not count.
 The report gives the percentage of aligned frames within the tolerance
 (`scoring.tolerance_cents`, 25 by default), the mean and median absolute deviation
-in cents, the overall offset (flat or sharp on average), the timing ratio, and the
-worst sections in the teacher's timeline with "flat", "sharp" or "unsteady" and the
-amount. The plot shades those sections in red and shows the deviation track
-underneath.
+in cents, the overall key offset, the timing ratio, and the worst sections in the
+teacher's timeline with "flat", "sharp" or "unsteady" and the amount. The plot
+shades those sections in red and shows the deviation track underneath.
+
+The key offset says where your notes sit against the teacher's, whatever the
+timing. Both curves become histograms of where the voice spends its time, and
+yours is slid up and down until it lines up best with the teacher's. It does not
+depend on how long you hold each note, and it cannot be fooled by DTW pairing a
+flat note with the teacher's neighbouring note a step lower. When an attempt has
+too little singing to tell, no offset is reported.
 
 The attempt is measured against the tonic stored in its meta file (the one the
 practice session used). Pass `--my-tonic <hz>` to rescore against another tonic,

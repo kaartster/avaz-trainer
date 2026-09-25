@@ -6,6 +6,8 @@ audio:
   hop_length: 256           # samples between successive pitch estimates (~5.8 ms)
   fmin_hz: 70               # lowest pitch we try to detect
   fmax_hz: 1000             # highest pitch we try to detect
+  pitch_silence_db: -55     # live pitch detection ignores frames quieter than this (dBFS).
+                            # The Surface room noise sits near -76, soft singing near -42
   input_device: null        # null = system default. Use `avaz devices` to see the list
   output_device: null
 
@@ -47,7 +49,7 @@ practice:
   latency_compensation: auto    # seconds to shift my curve left, or "auto" (sound card latency)
   start_on_voice: true          # mode "after": wait after the phrase until I start singing
   onset_grace_seconds: 0.4      # ignore the mic this long after the phrase (speaker bleed)
-  onset_rms_db: -40             # how loud the mic must be to count as singing (dBFS)
+  onset_rms_db: -50             # how loud the mic must be to count as singing (dBFS)
   onset_voiced_frames: 6        # consecutive pitched frames needed to trigger (6 x 5.8 ms)
   onset_preroll_seconds: 0.15   # audio kept from just before the trigger
   wait_timeout_seconds: 15      # give up waiting for my voice after this long

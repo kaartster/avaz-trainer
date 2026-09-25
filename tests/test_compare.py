@@ -83,7 +83,7 @@ def test_score_constant_offset():
     r = score_curves(make_curve(t, c), make_curve(t, c + 40), tolerance=25)
     assert r.mad == pytest.approx(40, abs=2)
     assert r.pct_within < 10            # DTW may pair a few vibrato peaks with troughs
-    assert r.median_offset == pytest.approx(40, abs=2)
+    assert r.key_offset == pytest.approx(40, abs=5)
     assert "sharp by 40" in r.summary()
     assert r.worst and r.worst[0].mean_dev == pytest.approx(40, abs=5)
 
@@ -162,7 +162,7 @@ def test_score_no_voiced_frames_does_not_crash():
     silent = make_curve(t, np.full(t.size, np.nan))
     r = score_curves(make_curve(t, c), silent)
     assert np.isnan(r.mad) and r.pct_within == 0.0 and r.n_pairs == 0
-    assert np.isnan(r.median_offset)
+    assert np.isnan(r.key_offset)
     assert isinstance(r.ref_times, np.ndarray) and r.ref_times.shape == r.ref_cents.shape
     r.summary()                          # must not raise
     r.to_record()                        # must not raise
@@ -179,11 +179,51 @@ def test_score_attempt_same_key_compares_absolute_pitch():
     low = make_curve(t, c - 400, tonic=132.0)
     r = score_attempt(teacher, low, same_key=True)
     assert r.octave_shift == 0 and r.pct_within == 0
-    assert r.median_offset == pytest.approx(-400, abs=5)
+    assert r.key_offset == pytest.approx(-400, abs=5)
     # a full octave low: same key must not fold it either
     octave_low = make_curve(t, c - 1200, tonic=132.0)
     r = score_attempt(teacher, octave_low, same_key=True)
     assert r.octave_shift == 0 and r.pct_within == 0
-    assert r.median_offset == pytest.approx(-1200, abs=5)
+    assert r.key_offset == pytest.approx(-1200, abs=5)
     # outside same key, the octave is folded away as before
     assert score_attempt(teacher, octave_low, same_key=False).mad < 1
+
+
+def notes_curve(notes, hop=0.02):
+    """[(cents, seconds), ...] -> cents array with a little vibrato."""
+    parts = []
+    for cents, seconds in notes:
+        n = int(seconds / hop)
+        parts.append(cents + 10 * np.sin(np.linspace(0, 12 * np.pi * seconds, n)))
+    return np.concatenate(parts)
+
+
+def test_key_offset_basic_shifts():
+    from avaz.compare import estimate_key_offset
+    teacher = notes_curve([(0, 1), (200, 1), (300, 1), (500, 1), (300, 1)])
+    assert estimate_key_offset(teacher, teacher) == pytest.approx(0, abs=3)
+    assert estimate_key_offset(teacher, teacher + 40) == pytest.approx(40, abs=3)
+    assert estimate_key_offset(teacher, teacher - 1200) == pytest.approx(-1200, abs=3)
+
+
+def test_key_offset_ignores_how_long_notes_are_held():
+    from avaz.compare import estimate_key_offset
+    teacher = notes_curve([(0, 1), (200, 1), (300, 1), (500, 1)])
+    # every note in tune, but I linger on the low note and rush the top
+    me = notes_curve([(0, 4), (200, 1), (300, 0.5), (500, 0.3)])
+    assert abs(np.median(me) - np.median(teacher)) > 100      # the old median measure was fooled
+    assert estimate_key_offset(teacher, me) == pytest.approx(0, abs=10)
+
+
+def test_key_offset_sees_a_whole_tone_flat_in_stepwise_melody():
+    from avaz.compare import estimate_key_offset
+    # stepwise melody: a whole tone flat looks "in tune" to note-by-note matching
+    teacher = notes_curve([(0, 1), (200, 1), (400, 1), (200, 1), (0, 1), (-200, 1)])
+    me = teacher - 200
+    assert estimate_key_offset(teacher, me) == pytest.approx(-200, abs=10)
+
+
+def test_key_offset_needs_enough_voiced_frames():
+    from avaz.compare import estimate_key_offset
+    teacher = notes_curve([(0, 1), (200, 1)])
+    assert np.isnan(estimate_key_offset(teacher, np.array([0.0, 5.0, np.nan])))

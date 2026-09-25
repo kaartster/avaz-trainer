@@ -60,7 +60,7 @@ class ScoreResult:
     timing_ratio: float           # attempt voiced length / reference voiced length
     n_pairs: int
     worst: list[Section]
-    median_offset: float = 0.0    # attempt median minus reference median, cents (+ = sharp)
+    key_offset: float = 0.0       # where my notes sit against the teacher's, cents (+ = sharp)
     # for plots: reference timeline with the attempt warped onto it
     ref_times: np.ndarray = field(repr=False, default=None)
     ref_cents: np.ndarray = field(repr=False, default=None)
@@ -73,10 +73,10 @@ class ScoreResult:
         lines = [f"within {self.tolerance:.0f} cents: {self.pct_within:.0f}%   "
                  f"mean deviation: {self.mad:.0f} cents   median: {self.median_abs:.0f} cents   "
                  f"timing: {100 * self.timing_ratio:.0f}% of the teacher's length"]
-        if abs(self.median_offset) >= 10:
-            direction = "sharp" if self.median_offset > 0 else "flat"
-            lines.append(f"overall {direction} by {abs(self.median_offset):.0f} cents "
-                         f"(median of the whole attempt against the teacher)")
+        if abs(self.key_offset) >= 10:
+            direction = "sharp" if self.key_offset > 0 else "flat"
+            lines.append(f"overall {direction} by {abs(self.key_offset):.0f} cents "
+                         f"(where my notes sit against the teacher's)")
         if self.octave_shift:
             lines.append(f"(attempt shifted by {self.octave_shift:+.0f} cents to match the octave)")
         if self.worst:
@@ -88,7 +88,7 @@ class ScoreResult:
         return {"mad": round(self.mad, 1), "median_abs": round(self.median_abs, 1),
                 "pct_within": round(self.pct_within, 1), "tolerance": self.tolerance,
                 "octave_shift": self.octave_shift, "timing_ratio": round(self.timing_ratio, 3),
-                "median_offset": round(self.median_offset, 1),
+                "key_offset": round(self.key_offset, 1),
                 "n_pairs": self.n_pairs,
                 "worst": [[round(s.start, 2), round(s.end, 2), round(s.mean_dev, 1)] for s in self.worst]}
 
@@ -169,6 +169,46 @@ def worst_sections(times, dev, tolerance: float, min_seconds: float = 0.2,
     return sections[:max_sections]
 
 
+def estimate_key_offset(reference_cents, attempt_cents, bin_cents: float = 10.0,
+                        smooth_cents: float = 50.0, max_shift: float = 1250.0,
+                        min_points: int = 20) -> float:
+    """How far my notes sit from the teacher's, in cents (positive = sharp), ignoring timing.
+
+    Both pitch curves become histograms of where the voice spends its time. My
+    histogram is slid up and down, and the shift where it lines up best with the
+    teacher's is the offset, refined between bins with a parabola through the
+    peak. Unlike comparing the two medians, it does not care how long each note
+    is held. Unlike the DTW-aligned deviations, it cannot be fooled by DTW pairing
+    a flat note with the teacher's neighbouring note a step lower. NaN when either
+    curve has fewer than ``min_points`` voiced values.
+    """
+    r = np.asarray(reference_cents, dtype=float)
+    a = np.asarray(attempt_cents, dtype=float)
+    r, a = r[np.isfinite(r)], a[np.isfinite(a)]
+    if r.size < min_points or a.size < min_points:
+        return float("nan")
+    lo = min(r.min(), a.min()) - max_shift - bin_cents
+    hi = max(r.max(), a.max()) + max_shift + bin_cents
+    edges = np.arange(lo, hi + bin_cents, bin_cents)
+    width = max(1, int(round(smooth_cents / bin_cents)))
+    kernel = np.ones(width) / width
+    hr = np.convolve(np.histogram(r, edges)[0].astype(float), kernel, mode="same")
+    ha = np.convolve(np.histogram(a, edges)[0].astype(float), kernel, mode="same")
+    hr, ha = hr / hr.sum(), ha / ha.sum()
+    n = int(round(max_shift / bin_cents))
+    lags = np.arange(-n, n + 1)
+    # The padding of max_shift on both sides means np.roll never wraps real data.
+    score = np.array([np.dot(hr, np.roll(ha, int(k))) for k in lags])
+    i = int(np.argmax(score))
+    frac = 0.0
+    if 0 < i < score.size - 1:
+        y0, y1, y2 = score[i - 1], score[i], score[i + 1]
+        denom = y0 - 2 * y1 + y2
+        if denom != 0:
+            frac = float(np.clip(0.5 * (y0 - y2) / denom, -0.5, 0.5))
+    return float(-(lags[i] + frac) * bin_cents)
+
+
 def score_curves(reference: PitchCurve, attempt: PitchCurve, tolerance: float = 25.0,
                  bin_seconds: float = 0.02, band: float = 0.2, fold: bool = True) -> ScoreResult:
     """Align ``attempt`` to ``reference`` (both in cents relative to their own tonic)."""
@@ -184,7 +224,7 @@ def score_curves(reference: PitchCurve, attempt: PitchCurve, tolerance: float = 
         # last time a field was added to ScoreResult, shifting every value after it.
         return ScoreResult(mad=float("nan"), median_abs=float("nan"), pct_within=0.0,
                            tolerance=tolerance, octave_shift=shift, timing_ratio=0.0, n_pairs=0,
-                           worst=[], median_offset=float("nan"),
+                           worst=[], key_offset=float("nan"),
                            ref_times=rt, ref_cents=rc, att_on_ref=np.full_like(rc, np.nan),
                            dev_on_ref=np.full_like(rc, np.nan), att_times=at, att_cents=ac)
 
@@ -207,7 +247,7 @@ def score_curves(reference: PitchCurve, attempt: PitchCurve, tolerance: float = 
         mad=float(abs_dev.mean()), median_abs=float(np.median(abs_dev)),
         pct_within=float(100 * (abs_dev <= tolerance).mean()), tolerance=float(tolerance),
         octave_shift=float(shift), timing_ratio=float(ai.size / ri.size), n_pairs=int(path.shape[0]),
-        median_offset=float(np.median(ac[ai]) - np.median(rc[ri])),
+        key_offset=estimate_key_offset(rc[ri], ac[ai]),
         worst=worst_sections(rt, dev_on_ref, tolerance),
         ref_times=rt, ref_cents=rc, att_on_ref=att_on_ref, dev_on_ref=dev_on_ref,
         att_times=at, att_cents=ac)

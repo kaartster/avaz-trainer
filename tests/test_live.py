@@ -92,3 +92,19 @@ def test_block_queue_drain():
     blocks = q.drain()
     assert len(blocks) == 2 and blocks[0].size == 3
     assert q.drain() == []
+
+
+def test_build_pitch_stream_uses_the_configured_silence_gate():
+    from avaz.live import build_pitch_stream
+    settings = {"audio": {"sample_rate": SR, "frame_length": FRAME, "hop_length": HOP,
+                          "pitch_silence_db": -55}}
+    ps = build_pitch_stream(settings, 132.0, backend="numpy", smoothing_frames=1)
+    # soft singing at about -48 dBFS RMS: below the old -46 gate, above the new -55 one
+    y = sine(150.0, 0.2, amp=0.0056)
+    assert 20 * np.log10(np.sqrt(np.mean(y ** 2))) == pytest.approx(-48, abs=0.5)
+    f0 = [p[1] for p in ps.process(y)]
+    assert f0 and np.isfinite(f0).all()
+    old = build_pitch_stream({"audio": {"sample_rate": SR, "frame_length": FRAME,
+                                        "hop_length": HOP}}, 132.0, backend="numpy",
+                             smoothing_frames=1)
+    assert all(np.isnan(p[1]) for p in old.process(y))
