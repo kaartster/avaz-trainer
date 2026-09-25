@@ -155,3 +155,14 @@ def test_worst_sections_drops_alternating_runs():
     assert len(secs) == 1 and "unsteady" in secs[0].describe()
     dev[(times > 0.5) & (times < 1.5)] = alt[(times > 0.5) & (times < 1.5)] * 0.8   # 24 cents: fine
     assert worst_sections(times, dev, tolerance=25) == []
+
+
+def test_score_no_voiced_frames_does_not_crash():
+    t, c = melody()
+    silent = make_curve(t, np.full(t.size, np.nan))
+    r = score_curves(make_curve(t, c), silent)
+    assert np.isnan(r.mad) and r.pct_within == 0.0 and r.n_pairs == 0
+    assert np.isnan(r.median_offset)
+    assert isinstance(r.ref_times, np.ndarray) and r.ref_times.shape == r.ref_cents.shape
+    r.summary()                          # must not raise
+    r.to_record()                        # must not raise

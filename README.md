@@ -103,6 +103,37 @@ an octave lower than the teacher, the red curve is shifted up by an octave so th
 shapes line up (`practice.fold_octave`). Use headphones if the mic picks up the
 speakers, or set `--gain` lower.
 
+## Song mode (no pre-cut phrases needed)
+
+```bash
+avaz song data/teacher/song.vocals.wav --scale dashti
+```
+
+An alternative to slicing in Audacity first: play the whole recording and
+choose where to pause and sing as you go. One key walks forward through the
+whole thing:
+
+- **Space**: start the recording playing. Press it again whenever you want to
+  stop and sing back what you just heard. Press it a third time when you are
+  done singing to save your attempt and let the teacher continue from there.
+- **R**: instead of moving on, replay the stretch you just sang and try it
+  again.
+- **Esc**: stop. Reopening later resumes from where you left off in that
+  recording.
+
+Every stretch you pause on is saved the first time as a normal phrase,
+`data/phrases/<song>/live_01.wav`, `live_02.wav`, and so on, with its own
+pitch curve and an entry in `labels.txt`, exactly as if you had labeled it in
+Audacity. That means `avaz score`, `avaz history` and ordinary
+`avaz practice live_01.wav` all work on it afterwards. Every repeat is scored
+and saved too, so `avaz history` shows your repeats of the same stretch
+alongside first attempts sliced by hand.
+
+`--my-tonic` and `--teacher-tonic` override the tonics (same defaults as
+practice mode). `--out-dir` changes where phrases are saved. Speed control and
+voice-triggered start are not available in this mode yet, the pacing is
+entirely in your hands.
+
 ## Scoring
 
 ```bash

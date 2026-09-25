@@ -142,7 +142,14 @@ class Session:
 
 
 class PracticeEngine:
-    """Full duplex stream: plays ``play_buffer`` during PLAY, records mic during PLAY/RESPOND."""
+    """Full duplex stream: plays ``play_buffer`` during PLAY, records mic during PLAY/RESPOND.
+
+    ``begin`` is used by phrase-based practice, which builds a fresh short-lived
+    session and buffer for every repetition. ``load`` is used by freeform practice
+    (:class:`FreeformSession`), which keeps one session and one buffer (the whole
+    recording) for the length of the session; :meth:`toggle` and
+    :meth:`repeat_segment` then drive it without recreating either.
+    """
 
     def __init__(self, sample_rate: int, block_size: int, input_device=None, output_device=None,
                  monitor_gain: float = 1.0):
@@ -191,6 +198,21 @@ class PracticeEngine:
     def trigger_respond(self, preroll: int) -> bool:
         with self._lock:
             return self.session.trigger(preroll)
+
+    def load(self, session: "FreeformSession", play_buffer: np.ndarray) -> None:
+        """Attach a freeform session and its (whole-recording) buffer once."""
+        with self._lock:
+            self.session = session
+            self.play_buffer = np.ascontiguousarray(play_buffer, dtype=np.float32)
+            self.captured.drain()
+
+    def toggle(self) -> None:
+        with self._lock:
+            self.session.toggle()
+
+    def repeat_segment(self) -> None:
+        with self._lock:
+            self.session.repeat()
 
     def start(self) -> None:
         self._stream.start()
@@ -282,6 +304,114 @@ class Attempt:
                           hop_seconds=self.stream.hop_length / self.stream.sample_rate,
                           tonic_hz=self.stream.tonic_hz, times=t, f0_hz=f0, cents=c,
                           voiced=np.isfinite(f0))
+
+
+@dataclass
+class FreeformSession:
+    """State machine for playing a whole recording with pauses and responses I
+    control live, instead of practicing pre-cut phrases.
+
+    One action, :meth:`toggle`, walks forward through the recording: start
+    playing, pause right there to sing, then move on (saving what I sang and
+    resuming the teacher from that same point). A second action, :meth:`repeat`,
+    replays the stretch I just sang instead of moving on. Positions are counted
+    in samples, like :class:`Session`; :meth:`advance` must be called with every
+    block the sound card processes.
+    """
+    total_len: int
+    phase: str = IDLE
+    pos: int = 0
+    segment_start: int = 0
+    segment_end: int = 0
+    auto_pause_at: int | None = None
+    reached_end: bool = False
+    segments: list = field(default_factory=list)   # (start, end) of every finalized stretch
+
+    def advance(self, frames: int) -> str:
+        active = self.phase
+        if active != PLAY:
+            return active
+        self.pos += frames
+        if self.auto_pause_at is not None and self.pos >= self.auto_pause_at:
+            self.pos = self.auto_pause_at
+            self._pause()
+        elif self.pos >= self.total_len:
+            self.pos = self.total_len
+            self._pause(reached_end=True)
+        return active
+
+    def _pause(self, reached_end: bool = False) -> None:
+        self.segment_end = self.pos
+        self.reached_end = reached_end
+        self.auto_pause_at = None
+        self.phase = RESPOND
+
+    def toggle(self) -> None:
+        """Start, pause-to-sing, or (from a response) move on to the next stretch."""
+        if self.phase == IDLE:
+            self.segment_start = self.pos
+            self.phase = PLAY
+        elif self.phase == PLAY:
+            self._pause()
+        elif self.phase == RESPOND:
+            self.next()
+
+    def repeat(self) -> None:
+        """Replay the stretch I just sang, then wait for me to sing it again."""
+        if self.phase != RESPOND:
+            return
+        self.pos = self.segment_start
+        self.auto_pause_at = self.segment_end
+        self.phase = PLAY
+
+    def next(self) -> None:
+        """Done with this stretch: record it, continue the recording forward."""
+        if self.phase != RESPOND:
+            return
+        self.segments.append((self.segment_start, self.segment_end))
+        self.segment_start = self.segment_end
+        self.phase = IDLE if self.reached_end else PLAY
+
+    def stop(self) -> None:
+        self.phase = IDLE
+
+
+def next_live_index(out_dir: Path) -> int:
+    """Next free number for auto-named freeform phrases already saved in this folder."""
+    nums = []
+    for p in Path(out_dir).glob("live_*.wav"):
+        try:
+            nums.append(int(p.stem.split("_")[1]))
+        except (IndexError, ValueError):
+            continue
+    return (max(nums) + 1) if nums else 1
+
+
+def export_live_segment(song_audio: np.ndarray, song_sr: int, teacher_curve, start_s: float,
+                        end_s: float, out_dir: Path) -> Path:
+    """Save a freeform-chosen stretch of the song as a normal phrase (WAV + pitch
+    curve) and add it to ``labels.txt``, so it works with the rest of the
+    toolchain (avaz score, avaz history, avaz practice) exactly like a phrase
+    sliced by hand in Audacity. Returns the phrase's WAV path.
+    """
+    from .slicer import slice_curve, read_labels, write_labels
+    from .slicer import Phrase as LabelPhrase
+    from .audio_io import save_wav
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    name = f"live_{next_live_index(out_dir):02d}"
+    a, b = int(round(start_s * song_sr)), int(round(end_s * song_sr))
+    wav = out_dir / f"{name}.wav"
+    save_wav(wav, song_audio[a:b], song_sr)
+    if teacher_curve is not None:
+        save_curve(slice_curve(teacher_curve, start_s, end_s, source=wav.name),
+                   wav.with_suffix(".pitch.json"))
+    labels_path = out_dir / "labels.txt"
+    labels = read_labels(labels_path) if labels_path.exists() else []
+    labels.append(LabelPhrase(start_s, end_s, name))
+    write_labels(labels, labels_path)
+    return wav
 
 
 def attempts_dir(phrase: Phrase) -> Path:

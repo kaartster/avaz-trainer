@@ -7,7 +7,8 @@ from avaz.cents import hz_to_cents
 from avaz.live import PitchStream
 from avaz.pitch_offline import PitchCurve, save_curve
 from avaz.practice import (Session, IDLE, PLAY, RESPOND, DONE, octave_shift, time_stretch,
-                           Attempt, Phrase, save_attempt, load_phrase, sibling_phrases)
+                           Attempt, Phrase, save_attempt, load_phrase, sibling_phrases,
+                           FreeformSession, next_live_index, export_live_segment)
 from avaz.pitch_live import NumpyYin
 
 
@@ -155,3 +156,93 @@ def test_onset_detector_ignores_silence_and_noise_then_fires_on_voice():
     assert voice_start <= fired_at <= voice_start + 0.1 * sr
     assert 0 < onset.preroll.size <= int(0.1 * sr) + 256
     assert onset.feed(voice[:256]) is False      # fires only once
+
+
+def test_freeform_toggle_walks_forward_through_the_song():
+    s = FreeformSession(total_len=100000)
+    assert s.phase == IDLE
+    s.toggle()                          # start
+    assert s.phase == PLAY and s.segment_start == 0
+    s.advance(20000)
+    assert s.phase == PLAY and s.pos == 20000
+    s.toggle()                          # pause here, I sing
+    assert s.phase == RESPOND and s.segment_end == 20000
+    s.toggle()                          # move on
+    assert s.phase == PLAY
+    assert s.segment_start == 20000 and s.pos == 20000
+    assert s.segments == [(0, 20000)]
+    s.advance(15000)
+    s.toggle()
+    assert s.phase == RESPOND and s.segment_end == 35000
+
+
+def test_freeform_repeat_replays_same_stretch_and_auto_pauses():
+    s = FreeformSession(total_len=100000)
+    s.toggle(); s.advance(10000); s.toggle()      # segment [0, 10000], now RESPOND
+    assert s.segments == []                        # repeat has not happened yet
+    s.repeat()
+    assert s.phase == PLAY and s.pos == 0 and s.auto_pause_at == 10000
+    s.advance(6000)
+    assert s.phase == PLAY and s.pos == 6000
+    s.advance(6000)                                 # crosses the auto-pause point
+    assert s.phase == RESPOND and s.pos == 10000 and s.segment_end == 10000
+    assert s.segments == []                         # repeating never finalizes a stretch
+    s.toggle()                                       # now actually move on
+    assert s.segments == [(0, 10000)]
+
+
+def test_freeform_repeat_only_valid_while_responding():
+    s = FreeformSession(total_len=1000)
+    s.repeat()                          # no-op from IDLE
+    assert s.phase == IDLE
+    s.toggle()
+    s.repeat()                          # no-op from PLAY
+    assert s.phase == PLAY
+
+
+def test_freeform_reaching_the_end_stops_advancing_and_finishing_ends_the_session():
+    s = FreeformSession(total_len=1000)
+    s.toggle()
+    s.advance(1500)                     # overshoots the end
+    assert s.phase == RESPOND and s.pos == 1000 and s.reached_end
+    s.toggle()                          # "move on" from the last stretch ends the session
+    assert s.phase == IDLE
+    assert s.segments == [(0, 1000)]
+
+
+def test_freeform_stop_from_any_phase():
+    s = FreeformSession(total_len=1000)
+    s.toggle()
+    s.stop()
+    assert s.phase == IDLE
+    s.pos = 200
+    s.toggle()                          # resumes from where it was stopped, not from 0
+    assert s.phase == PLAY and s.segment_start == 200
+
+
+def test_next_live_index(tmp_path):
+    assert next_live_index(tmp_path) == 1
+    (tmp_path / "live_01.wav").write_bytes(b"")
+    (tmp_path / "live_03.wav").write_bytes(b"")
+    (tmp_path / "labels.txt").write_text("", encoding="utf-8")
+    assert next_live_index(tmp_path) == 4
+
+
+def test_export_live_segment_writes_phrase_and_labels(tmp_path):
+    sr = 22050
+    y = (0.3 * np.sin(2 * np.pi * 200 * np.arange(3 * sr) / sr)).astype(np.float32)
+    times = np.arange(0, 3.0, 0.01)
+    f0 = np.full(times.size, 200.0)
+    curve = PitchCurve("song", sr, 0.01, 200.0, times, f0, hz_to_cents(f0, 200.0), np.isfinite(f0))
+    wav = export_live_segment(y, sr, curve, 1.0, 2.0, tmp_path)
+    assert wav == tmp_path / "live_01.wav"
+    assert wav.exists() and wav.with_suffix(".pitch.json").exists()
+    from avaz.slicer import read_labels
+    labels = read_labels(tmp_path / "labels.txt")
+    assert len(labels) == 1 and labels[0].label == "live_01"
+    assert labels[0].start == pytest.approx(1.0) and labels[0].end == pytest.approx(2.0)
+
+    wav2 = export_live_segment(y, sr, curve, 2.0, 2.5, tmp_path)
+    assert wav2 == tmp_path / "live_02.wav"
+    labels = read_labels(tmp_path / "labels.txt")
+    assert [l.label for l in labels] == ["live_01", "live_02"]

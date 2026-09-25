@@ -180,8 +180,13 @@ def score_curves(reference: PitchCurve, attempt: PitchCurve, tolerance: float = 
     ri = np.nonzero(np.isfinite(rc))[0]
     ai = np.nonzero(np.isfinite(ac))[0]
     if ri.size == 0 or ai.size == 0:
-        return ScoreResult(float("nan"), float("nan"), 0.0, tolerance, shift, 0.0, 0, [],
-                           rt, rc, np.full_like(rc, np.nan), np.full_like(rc, np.nan), at, ac)
+        # Keyword arguments here on purpose: a positional call broke silently the
+        # last time a field was added to ScoreResult, shifting every value after it.
+        return ScoreResult(mad=float("nan"), median_abs=float("nan"), pct_within=0.0,
+                           tolerance=tolerance, octave_shift=shift, timing_ratio=0.0, n_pairs=0,
+                           worst=[], median_offset=float("nan"),
+                           ref_times=rt, ref_cents=rc, att_on_ref=np.full_like(rc, np.nan),
+                           dev_on_ref=np.full_like(rc, np.nan), att_times=at, att_cents=ac)
 
     path = dtw_align(rc[ri], ac[ai], band=band)
     dev_pairs = ac[ai[path[:, 1]]] - rc[ri[path[:, 0]]]

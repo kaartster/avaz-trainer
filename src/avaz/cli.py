@@ -339,6 +339,46 @@ def cmd_practice(args) -> int:
                              autostart=args.autostart)
 
 
+def cmd_song(args) -> int:
+    from .audio_io import load_audio
+    from .practice import PracticeEngine
+    from .pitch_offline import curve_path_for, load_curve
+    from .scales import load_scales
+    from .ui.song_view import run_song_view
+
+    settings = load_settings()
+    audio = settings.get("audio", {})
+    sr = int(args.sample_rate or audio.get("sample_rate", 44100))
+    block = int(args.block or audio.get("hop_length", 256))
+    scale = load_scales()[args.scale] if args.scale else None
+
+    src = Path(args.file)
+    tonic_cfg = settings.get("tonic", {})
+    if args.my_tonic:
+        my_tonic = float(args.my_tonic)
+    else:
+        my_tonic = float(tonic_cfg.get("mine_hz") or tonic_cfg.get("teacher_hz") or 0) or None
+        if my_tonic is None:
+            raise SystemExit("no tonic: pass --my-tonic <hz> or set tonic.mine_hz in settings.yaml")
+
+    curve = _load_or_analyze(src, settings, _parse_tonic(args.teacher_tonic, settings))
+    y, file_sr = load_audio(src, sr=sr)
+    out_dir = _phrase_out_dir(src, args.out_dir)
+
+    engine = PracticeEngine(sr, block,
+                            input_device=_resolve_device(args.device, "input"),
+                            output_device=_resolve_device(args.output, "output"),
+                            monitor_gain=args.gain)
+    print(f"input: {engine.input_name}")
+    print(f"output: {engine.output_name}")
+    print(f"stream latency in/out: {1000 * engine.latency[0]:.0f} / {1000 * engine.latency[1]:.0f} ms")
+    print(f"tonic: teacher {curve.tonic_hz:.1f} Hz, mine {my_tonic:.1f} Hz")
+    print(f"saving stretches I pause on to {out_dir}")
+    return run_song_view(engine, src, y, curve, out_dir, settings, scale, my_tonic,
+                         script=args.script.split(",") if args.script else None,
+                         screenshot=args.screenshot, quit_after=args.quit_after)
+
+
 def _attempt_wavs(target: Path) -> list[Path]:
     if target.is_dir():
         return sorted(p for p in target.glob("*.wav"))
@@ -521,6 +561,28 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--screenshot", default=None, help=argparse.SUPPRESS)
     s.add_argument("--quit-after", type=float, default=None, help=argparse.SUPPRESS)
     s.set_defaults(func=cmd_practice)
+
+    s = sub.add_parser("song", help="play a whole recording, pause anywhere to sing, "
+                                    "no pre-cut phrases needed")
+    s.add_argument("file", help="the recording to practice with (use the .vocals.wav if it "
+                                "has accompaniment)")
+    s.add_argument("--scale", default=None, help="scale name from scales.yaml for guide lines")
+    s.add_argument("--my-tonic", default=None,
+                   help="my tonic in Hz (default: tonic.mine_hz, then tonic.teacher_hz)")
+    s.add_argument("--teacher-tonic", default=None,
+                   help="the recording's tonic in Hz, 'auto' or 'final' (default: tonic.teacher_hz)")
+    s.add_argument("--out-dir", default=None,
+                   help="where stretches I pause on are saved as phrases (default: "
+                        "data/phrases/<recording name>/)")
+    s.add_argument("--device", default=None, help="input device index or name substring")
+    s.add_argument("--output", default=None, help="output device index or name substring")
+    s.add_argument("--gain", type=float, default=1.0, help="teacher playback gain")
+    s.add_argument("--sample-rate", type=int, default=None)
+    s.add_argument("--block", type=int, default=None)
+    s.add_argument("--script", default=None, help=argparse.SUPPRESS)
+    s.add_argument("--screenshot", default=None, help=argparse.SUPPRESS)
+    s.add_argument("--quit-after", type=float, default=None, help=argparse.SUPPRESS)
+    s.set_defaults(func=cmd_song)
 
     s = sub.add_parser("score", help="score an attempt against its teacher phrase")
     s.add_argument("attempt", help="attempt WAV, or an attempt folder to score every WAV in it")
