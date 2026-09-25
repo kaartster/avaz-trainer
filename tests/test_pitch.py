@@ -78,3 +78,15 @@ def test_remove_outliers_blanks_far_frames_only():
     assert np.isnan(out[2])
     # disabled
     assert np.array_equal(remove_outliers(f0, 0), f0, equal_nan=True)
+
+
+def test_remove_boundary_pins():
+    from avaz.pitch_offline import remove_boundary_pins
+    fmin, fmax = 70.0, 1000.0
+    f0 = np.array([70.0, 70.5, 90.0, 500.0, 998.0, 1000.0, np.nan])
+    out = remove_boundary_pins(f0, fmin, fmax, guard_cents=25)
+    assert np.isnan(out[0]) and np.isnan(out[1])   # right at / just above fmin
+    assert np.isfinite(out[2]) and np.isfinite(out[3])
+    assert np.isnan(out[4]) and np.isnan(out[5])   # right at / just below fmax
+    assert np.isnan(out[6])
+    assert np.array_equal(remove_boundary_pins(f0, fmin, fmax, 0), f0, equal_nan=True)

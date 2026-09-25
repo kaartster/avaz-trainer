@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .cents import hz_to_cents, estimate_tonic
+from .cents import OCTAVE, hz_to_cents, estimate_tonic
 
 
 @dataclass
@@ -83,6 +83,26 @@ def remove_short_islands(f0: np.ndarray, min_frames: int) -> np.ndarray:
     return f0
 
 
+def remove_boundary_pins(f0: np.ndarray, fmin: float, fmax: float, guard_cents: float = 25.0) -> np.ndarray:
+    """Blank frames sitting within ``guard_cents`` of the search range's edges.
+
+    pyin (and YIN in general) searches for a period only between ``fmin`` and
+    ``fmax``. When a frame has no clear periodicity (breath, separation
+    artifacts, room noise) the Viterbi path can still be forced to pick a pitch,
+    and it often lands exactly on the boundary rather than somewhere plausible.
+    A frame at exactly ``fmin`` is almost never a real note, since ``fmin`` is
+    already set below the singer's comfortable range. A value of 0 disables this.
+    """
+    if guard_cents <= 0:
+        return f0
+    f0 = f0.copy()
+    voiced = np.isfinite(f0) & (f0 > 0)
+    lo = fmin * 2 ** (guard_cents / OCTAVE)
+    hi = fmax * 2 ** (-guard_cents / OCTAVE)
+    f0[voiced & ((f0 <= lo) | (f0 >= hi))] = np.nan
+    return f0
+
+
 def remove_outliers(f0: np.ndarray, max_cents_from_median: float) -> np.ndarray:
     """Blank voiced frames further than ``max_cents_from_median`` from the median pitch.
 
@@ -107,7 +127,7 @@ def analyze_audio(y: np.ndarray, sr: int, tonic_hz: float | str | None = "auto",
                   frame_length: int = 2048, hop_length: int = 256,
                   fmin: float = 70.0, fmax: float = 1000.0,
                   voiced_prob_threshold: float = 0.0, min_voiced_seconds: float = 0.03,
-                  max_cents_from_median: float = 1500.0,
+                  max_cents_from_median: float = 1500.0, boundary_guard_cents: float = 25.0,
                   source: str = "") -> PitchCurve:
     """Run pyin on a mono signal and return a :class:`PitchCurve`.
 
@@ -127,6 +147,7 @@ def analyze_audio(y: np.ndarray, sr: int, tonic_hz: float | str | None = "auto",
     if voiced_prob_threshold > 0:
         f0[voiced_prob < voiced_prob_threshold] = np.nan
     hop_seconds = hop_length / sr
+    f0 = remove_boundary_pins(f0, fmin, fmax, boundary_guard_cents)
     f0 = remove_outliers(f0, max_cents_from_median)
     f0 = remove_short_islands(f0, int(round(min_voiced_seconds / hop_seconds)))
     voiced = np.isfinite(f0)
@@ -161,6 +182,7 @@ def analyze_file(path: str | Path, tonic_hz: float | str | None = "auto",
         voiced_prob_threshold=float(offline.get("voiced_prob_threshold", 0.0)),
         min_voiced_seconds=float(offline.get("min_voiced_seconds", 0.03)),
         max_cents_from_median=float(offline.get("max_cents_from_median", 1500)),
+        boundary_guard_cents=float(offline.get("boundary_guard_cents", 25)),
         source=Path(path).name)
 
 

@@ -28,6 +28,10 @@ offline:
   # blank frames further than this from the recording's median pitch (cents). Catches
   # detector slips on noise left over from vocal separation. 0 disables it
   max_cents_from_median: 1500
+  # blank frames within this many cents of fmin or fmax (audio.fmin_hz/fmax_hz). pyin
+  # forces a pitch even on noise, and it often lands exactly on the search boundary.
+  # 0 disables it
+  boundary_guard_cents: 25
 
 slicer:
   silence_db: -40           # frames quieter than this (dBFS) count as silence
