@@ -129,10 +129,31 @@ Audacity. That means `avaz score`, `avaz history` and ordinary
 and saved too, so `avaz history` shows your repeats of the same stretch
 alongside first attempts sliced by hand.
 
-`--my-tonic` and `--teacher-tonic` override the tonics (same defaults as
-practice mode). `--out-dir` changes where phrases are saved. Speed control and
-voice-triggered start are not available in this mode yet, the pacing is
-entirely in your hands.
+After a pause the app waits for your voice ("SING WHEN READY"), so the time you
+need to breathe does not count. Your curve is drawn so that the moment you start
+singing lines up with the moment the teacher starts singing in that stretch. The
+first `practice.onset_grace_seconds` after the pause are ignored, because the
+speakers are still ringing with the teacher's last note. Press V to turn voice
+start off.
+
+`--out-dir` changes where phrases are saved. Speed control is not available in
+this mode yet.
+
+## Same key or transposed
+
+By default your curve is measured from your own tonic (`tonic.mine_hz`) and the
+teacher's from theirs, so you can sing a recording in your own key and still
+compare shapes. When the teacher sang a recording in your range, compare
+absolute pitch instead:
+
+```bash
+avaz song data/teacher/song.vocals.wav --same-key --teacher-tonic 132
+```
+
+Both choices are remembered in `data/phrases/<song>/song.yaml`, and practice
+mode and `avaz score` read the same file for that song's phrases. In the same
+key nothing is transposed or octave folded: singing a third or an octave off
+shows up as exactly that. `--no-same-key` switches back.
 
 ## Scoring
 

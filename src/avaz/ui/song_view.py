@@ -7,6 +7,17 @@ that same spot. R replays the stretch I just sang instead of moving on. Every
 stretch I pause on is saved as a normal phrase (WAV plus pitch curve) the first
 time I finish it, so it works afterwards with ``avaz score``, ``avaz history``
 and ordinary ``avaz practice``.
+
+Voice start: after a pause the app waits for my voice instead of starting the
+clock at the key press, so the time I need to take a breath does not count.
+My curve is drawn so that the moment I start singing lines up with the moment
+the teacher starts singing in that stretch. The first ``onset_grace_seconds``
+after the pause are ignored, because the speakers are still ringing with the
+teacher's last note.
+
+Same key: when the teacher sang the recording in my own range (``same_key`` in
+the song's song.yaml), my pitch is drawn and scored as it is, measured from the
+teacher's tonic, with no transposition and no octave folding.
 """
 
 from __future__ import annotations
@@ -18,18 +29,19 @@ import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..cents import OCTAVE, octave_shift
-from ..live import PitchStream, build_pitch_stream
-from ..practice import (IDLE, PLAY, RESPOND, Attempt, FreeformSession, PracticeEngine,
-                        export_live_segment, load_phrase, save_attempt)
+from ..live import build_pitch_stream
+from ..practice import (IDLE, PLAY, RESPOND, Attempt, FreeformSession, OnsetDetector,
+                        PracticeEngine, export_live_segment, first_voiced_time, load_phrase,
+                        save_attempt)
 from ..scales import Scale
 
-HELP = "Space start/pause/next   R repeat this stretch   O octave fold   Esc quit"
+HELP = "Space start/pause/next   R repeat this stretch   V voice start   O octave fold   Esc quit"
 
 
 class SongView(QtWidgets.QMainWindow):
     def __init__(self, engine: PracticeEngine, song_path: Path, song_audio: np.ndarray,
                  teacher_curve, out_dir: Path, settings: dict, scale: Scale | None,
-                 my_tonic: float, view_seconds: float = 20.0):
+                 my_tonic: float, same_key: bool = False, view_seconds: float = 20.0):
         super().__init__()
         self.engine = engine
         self.settings = settings
@@ -37,11 +49,14 @@ class SongView(QtWidgets.QMainWindow):
         self.colors = settings.get("colors", {})
         self.teacher_curve = teacher_curve
         self.teacher_tonic = teacher_curve.tonic_hz if teacher_curve is not None else my_tonic
-        self.my_tonic = my_tonic
+        self.same_key = bool(same_key)
+        self.my_tonic = self.teacher_tonic if self.same_key else my_tonic
         self.out_dir = Path(out_dir)
         self.view_seconds = float(view_seconds)
-        self.fold = bool(settings.get("practice", {}).get("fold_octave", True))
         self.pr = settings.get("practice", {})
+        self.fold = False if self.same_key else bool(self.pr.get("fold_octave", True))
+        self.voice_start = bool(self.pr.get("start_on_voice", True))
+        self.grace_samples = int(float(self.pr.get("onset_grace_seconds", 0.4)) * engine.sample_rate)
 
         self.freeform = FreeformSession(total_len=song_audio.size)
         self.engine.load(self.freeform, song_audio)
@@ -49,6 +64,11 @@ class SongView(QtWidgets.QMainWindow):
         self._exported_key: tuple[int, int] | None = None
         self._exported_wav: Path | None = None
         self.attempt: Attempt | None = None
+        self.onset: OnsetDetector | None = None
+        self._resp_samples = 0          # samples heard since the pause
+        self._voice_at: float | None = None   # seconds from the pause to my voice
+        self._my_onset = float("nan")   # where singing starts in my attempt's own times
+        self._teacher_onset = 0.0       # where singing starts in the teacher's stretch
         self.shift = 0.0
         self.saved_count = 0
 
@@ -60,6 +80,7 @@ class SongView(QtWidgets.QMainWindow):
         self.timer.timeout.connect(self._tick)
         self.timer.start()
 
+    # ------------------------------------------------------------------ UI setup
     def _build_ui(self):
         pg.setConfigOptions(antialias=False, background="k", foreground="w")
         central = QtWidgets.QWidget()
@@ -67,7 +88,8 @@ class SongView(QtWidgets.QMainWindow):
         self.setCentralWidget(central)
 
         self.header = QtWidgets.QLabel("")
-        font = QtGui.QFont(); font.setPointSize(13)
+        font = QtGui.QFont()
+        font.setPointSize(13)
         self.header.setFont(font)
         layout.addWidget(self.header)
 
@@ -94,12 +116,15 @@ class SongView(QtWidgets.QMainWindow):
                                                             width=2), connect="finite")
         self.cursor = pg.InfiniteLine(0, angle=90, pen=pg.mkPen("#ffffff", width=1))
         self.plot.addItem(self.cursor)
-        self.segment_box = pg.LinearRegionItem(values=(0, 0), movable=False, brush=(255, 255, 255, 20))
+        self.segment_box = pg.LinearRegionItem(values=(0, 0), movable=False,
+                                               brush=(255, 255, 255, 20))
         self.segment_box.setVisible(False)
         self.plot.addItem(self.segment_box)
 
         self.state_label = QtWidgets.QLabel("Space to begin")
-        f2 = QtGui.QFont(); f2.setPointSize(20); f2.setBold(True)
+        f2 = QtGui.QFont()
+        f2.setPointSize(20)
+        f2.setBold(True)
         self.state_label.setFont(f2)
         self.state_label.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(self.state_label)
@@ -127,6 +152,8 @@ class SongView(QtWidgets.QMainWindow):
             self.engine.toggle()
         elif key == QtCore.Qt.Key_R:
             self.engine.repeat_segment()
+        elif key == QtCore.Qt.Key_V:
+            self.voice_start = not self.voice_start
         elif key == QtCore.Qt.Key_O:
             self.fold = not self.fold
             if not self.fold:
@@ -154,61 +181,132 @@ class SongView(QtWidgets.QMainWindow):
             self._begin_response()
         for tag, pos, block in self.engine.captured.drain():
             if tag == RESPOND and self.attempt is not None:
-                self.attempt.add(block)
+                self._feed_response(block)
         if leaving_respond:
             self._end_response()
 
-        if self.attempt is not None and self.attempt.points:
-            t = np.array([p[0] for p in self.attempt.points])
-            cts = np.array([p[2] for p in self.attempt.points])
-            if self.fold and self.teacher_curve is not None:
-                seg = self.teacher_curve.cents[
-                    (self.teacher_curve.times >= self.freeform.segment_start / sr) &
-                    (self.teacher_curve.times < self.freeform.segment_end / sr)]
-                self.shift = octave_shift(cts, seg, min_points=5)
-            self.my_curve.setData(t + self.freeform.segment_start / sr, cts + self.shift)
-
-        self.cursor.setPos(self.freeform.pos / sr)
+        self._draw_attempt(sr)
+        self._update_cursor(phase, sr)
         self._update_view_range(phase, sr)
         self._update_labels(phase)
         self._prev_phase = phase
 
+    def _waiting_for_voice(self) -> bool:
+        return (self.freeform.phase == RESPOND and self.voice_start
+                and self.onset is not None and not self.onset.triggered)
+
     def _begin_response(self):
-        key = (self.freeform.segment_start, self.freeform.segment_end)
-        pr = self.pr
+        sr = self.engine.sample_rate
+        start, end = self.freeform.segment_start, self.freeform.segment_end
         stream = build_pitch_stream(self.settings, self.my_tonic)
-        lat = getattr(self.engine, "latency", (0.0, 0.0))
-        offset = lat[0] + lat[1] if pr.get("latency_compensation", "auto") == "auto" else \
-            float(pr.get("latency_compensation") or 0.0)
+        if self.voice_start:
+            offset = 0.0            # aligned by voice onset, so sound card latency cancels out
+        else:
+            lat = getattr(self.engine, "latency", (0.0, 0.0))
+            cfg = self.pr.get("latency_compensation", "auto")
+            offset = lat[0] + lat[1] if cfg == "auto" else float(cfg or 0.0)
         self.attempt = Attempt(stream, time_offset=offset)
+        self.onset = OnsetDetector(stream.detector, stream.hop_length,
+                                   rms_db=float(self.pr.get("onset_rms_db", -40)),
+                                   voiced_frames=int(self.pr.get("onset_voiced_frames", 6)),
+                                   preroll_seconds=float(self.pr.get("onset_preroll_seconds", 0.15)))
+        self._resp_samples = 0
+        self._voice_at = None
+        self._my_onset = float("nan")
+        self._teacher_onset = 0.0
+        c = self.teacher_curve
+        if c is not None:
+            m = (c.times >= start / sr) & (c.times < end / sr)
+            t0 = first_voiced_time(c.times[m] - start / sr, c.f0_hz[m])
+            self._teacher_onset = t0 if np.isfinite(t0) else 0.0
         self.my_curve.setData([], [])
         self.shift = 0.0
-        if key != self._exported_key:
-            start_s = self.freeform.segment_start / self.engine.sample_rate
-            end_s = self.freeform.segment_end / self.engine.sample_rate
-            wav = export_live_segment(self.engine.play_buffer, self.engine.sample_rate,
-                                      self.teacher_curve, start_s, end_s, self.out_dir)
-            self._exported_key, self._exported_wav = key, wav
+        if (start, end) != self._exported_key:
+            wav = export_live_segment(self.engine.play_buffer, sr, self.teacher_curve,
+                                      start / sr, end / sr, self.out_dir)
+            self._exported_key, self._exported_wav = (start, end), wav
+
+    def _feed_response(self, block: np.ndarray):
+        if not self.voice_start:
+            self.attempt.add(block)
+            return
+        before = self._resp_samples
+        self._resp_samples += block.size
+        if before < self.grace_samples:
+            return                  # the speakers are still ringing with the teacher's note
+        if not self.onset.triggered:
+            if self.onset.feed(block):
+                preroll = self.onset.preroll
+                self._voice_at = (self._resp_samples - preroll.size) / self.engine.sample_rate
+                self.attempt.add(preroll)
+        else:
+            self.attempt.add(block)
 
     def _end_response(self):
-        if self.attempt is None or not self.attempt.blocks or self._exported_wav is None:
-            self.attempt = None
+        attempt, self.attempt = self.attempt, None
+        if attempt is None or self._exported_wav is None:
             return
-        phrase = load_phrase(self._exported_wav, self.engine.sample_rate)
-        wav = save_attempt(self.attempt, phrase, "freeform", 1.0, self.teacher_tonic, self.shift)
+        if not attempt.blocks:
+            self.statusBar().showMessage(f"no voice heard, nothing saved    {HELP}")
+            return
+        sr = self.engine.sample_rate
+        phrase = load_phrase(self._exported_wav, sr)
+        extra = {"same_key": self.same_key}
+        if self._voice_at is not None:
+            extra["voice_start_seconds"] = round(self._voice_at, 3)
+        wav = save_attempt(attempt, phrase, "freeform", 1.0, self.teacher_tonic, self.shift,
+                           extra=extra)
         self.saved_count += 1
         msg = f"saved {wav.name} ({phrase.name})"
+        if self._voice_at is not None:
+            msg += f", started singing {self._voice_at:.1f}s after the pause"
         if phrase.curve is not None:
             try:
-                from ..compare import score_curves, record_score
+                from ..compare import score_attempt, record_score
                 tol = float(self.settings.get("scoring", {}).get("tolerance_cents", 25))
-                result = score_curves(phrase.curve, self.attempt.curve(wav.name), tolerance=tol)
+                result = score_attempt(phrase.curve, attempt.curve(wav.name), tolerance=tol,
+                                       same_key=self.same_key)
                 record_score(wav, result, "live")
                 msg += f"    score: {result.pct_within:.0f}% within {tol:.0f}c, mean {result.mad:.0f}c"
+                if abs(result.median_offset) >= 10:
+                    word = "sharp" if result.median_offset > 0 else "flat"
+                    msg += f", {word} by {abs(result.median_offset):.0f}c overall"
             except Exception as exc:
                 msg += f"    (score failed: {exc})"
         self.statusBar().showMessage(f"{msg}    {HELP}")
-        self.attempt = None
+
+    # ------------------------------------------------------------------ drawing
+    def _x_origin(self, sr: float) -> float:
+        """Song time where my attempt's time 0 is drawn."""
+        seg = self.freeform.segment_start / sr
+        if self.voice_start and np.isfinite(self._my_onset):
+            return seg + self._teacher_onset - self._my_onset
+        return seg
+
+    def _draw_attempt(self, sr):
+        if self.attempt is None or not self.attempt.points:
+            return
+        t = np.array([p[0] for p in self.attempt.points])
+        f0 = np.array([p[1] for p in self.attempt.points])
+        cts = np.array([p[2] for p in self.attempt.points])
+        if not np.isfinite(self._my_onset):
+            self._my_onset = first_voiced_time(t, f0)
+        if self.fold and self.teacher_curve is not None:
+            c = self.teacher_curve
+            seg = c.cents[(c.times >= self.freeform.segment_start / sr) &
+                          (c.times < self.freeform.segment_end / sr)]
+            self.shift = octave_shift(cts, seg, min_points=5)
+        self.my_curve.setData(t + self._x_origin(sr), cts + self.shift)
+
+    def _update_cursor(self, phase, sr):
+        if phase != RESPOND:
+            self.cursor.setPos(self.freeform.pos / sr)
+            return
+        seg = self.freeform.segment_start / sr
+        if self._waiting_for_voice() or self.attempt is None or not self.attempt.points:
+            self.cursor.setPos(seg + (self._teacher_onset if self.voice_start else 0.0))
+        else:
+            self.cursor.setPos(self.attempt.points[-1][0] + self._x_origin(sr))
 
     def _update_view_range(self, phase, sr):
         pos = self.freeform.pos / sr
@@ -227,15 +325,18 @@ class SongView(QtWidgets.QMainWindow):
     def _update_labels(self, phase):
         total_s = self.freeform.total_len / self.engine.sample_rate
         pos_s = self.freeform.pos / self.engine.sample_rate
+        key = "same as teacher" if self.same_key else f"transposed to mine ({self.my_tonic:.1f} Hz)"
         self.header.setText(
-            f"{pos_s:6.1f} / {total_s:6.1f} s   tonic: teacher {self.teacher_tonic:.1f} Hz / "
-            f"mine {self.my_tonic:.1f} Hz   fold: {'on' if self.fold else 'off'}   "
-            f"saved this session: {self.saved_count}")
+            f"{pos_s:6.1f} / {total_s:6.1f} s   tonic {self.teacher_tonic:.1f} Hz   key: {key}   "
+            f"voice start: {'on' if self.voice_start else 'off'}   "
+            f"fold: {'on' if self.fold else 'off'}   saved: {self.saved_count}")
         if phase == IDLE:
             txt, color = ("song finished, close whenever you like" if self.freeform.reached_end
                           else "Space to begin"), "#aaaaaa"
         elif phase == PLAY:
             txt, color = "LISTEN", "#3498db"
+        elif self._waiting_for_voice():
+            txt, color = "SING WHEN READY", "#f1c40f"
         else:
             txt, color = "YOUR TURN", "#e74c3c"
         if self.shift:
@@ -246,10 +347,11 @@ class SongView(QtWidgets.QMainWindow):
 
 def run_song_view(engine: PracticeEngine, song_path: Path, song_audio, teacher_curve,
                   out_dir: Path, settings: dict, scale: Scale | None, my_tonic: float,
-                  script: list | None = None, screenshot: str | None = None,
-                  quit_after: float | None = None) -> int:
+                  same_key: bool = False, script: list | None = None,
+                  screenshot: str | None = None, quit_after: float | None = None) -> int:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    view = SongView(engine, song_path, song_audio, teacher_curve, out_dir, settings, scale, my_tonic)
+    view = SongView(engine, song_path, song_audio, teacher_curve, out_dir, settings, scale,
+                    my_tonic, same_key=same_key)
     view.resize(1200, 700)
     view.show()
     engine.start()
@@ -259,6 +361,19 @@ def run_song_view(engine: PracticeEngine, song_path: Path, song_audio, teacher_c
         for step in script:
             if step.startswith("wait:"):
                 t += float(step.split(":", 1)[1])
+                continue
+            if step.startswith("shot:"):
+                path = step.split(":", 1)[1]
+                QtCore.QTimer.singleShot(int(t * 1000), lambda p=path: view.grab().save(p))
+                continue
+            if step.startswith("play:"):
+                # Test hook: play a file through the speakers as a stand-in for singing.
+                def _play(p=step.split(":", 1)[1]):
+                    import sounddevice as sd
+                    from ..audio_io import load_audio
+                    y, sr = load_audio(p)
+                    sd.play(y, sr)
+                QtCore.QTimer.singleShot(int(t * 1000), _play)
                 continue
             action = {"space": engine.toggle, "repeat": engine.repeat_segment}.get(step)
             if action:

@@ -418,9 +418,28 @@ def attempts_dir(phrase: Phrase) -> Path:
     return data_dir() / "attempts" / phrase.audio_path.parent.name / phrase.name
 
 
+def first_voiced_time(times, f0, run: int = 6) -> float:
+    """Time of the first frame that starts ``run`` consecutive voiced frames, or NaN.
+
+    Requiring a run skips single-frame clicks and breath noise, so this finds
+    where singing really begins.
+    """
+    voiced = np.isfinite(np.asarray(f0, dtype=float))
+    count = 0
+    for i, v in enumerate(voiced):
+        count = count + 1 if v else 0
+        if count >= run:
+            return float(np.asarray(times, dtype=float)[i - run + 1])
+    return float("nan")
+
+
 def save_attempt(attempt: Attempt, phrase: Phrase, mode: str, speed: float,
-                 teacher_tonic: float, shift: float, out_dir: Path | None = None) -> Path:
-    """Write ``<stamp>.wav``, ``<stamp>.pitch.json`` and ``<stamp>.meta.json``."""
+                 teacher_tonic: float, shift: float, out_dir: Path | None = None,
+                 extra: dict | None = None) -> Path:
+    """Write ``<stamp>.wav``, ``<stamp>.pitch.json`` and ``<stamp>.meta.json``.
+
+    ``extra`` adds fields to the meta file (for example ``same_key``).
+    """
     from .audio_io import save_wav
     out_dir = out_dir or attempts_dir(phrase)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -437,6 +456,7 @@ def save_attempt(attempt: Attempt, phrase: Phrase, mode: str, speed: float,
         "latency_offset_seconds": attempt.time_offset,
         "recorded_at": stamp,
     }
+    meta.update(extra or {})
     with open(wav.with_suffix(".meta.json"), "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=1)
     return wav

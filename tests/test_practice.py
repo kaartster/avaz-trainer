@@ -246,3 +246,27 @@ def test_export_live_segment_writes_phrase_and_labels(tmp_path):
     assert wav2 == tmp_path / "live_02.wav"
     labels = read_labels(tmp_path / "labels.txt")
     assert [l.label for l in labels] == ["live_01", "live_02"]
+
+
+def test_first_voiced_time_needs_a_run():
+    from avaz.practice import first_voiced_time
+    t = np.arange(20) * 0.01
+    f0 = np.full(20, np.nan)
+    f0[2] = 200.0                    # a lone click
+    f0[8:18] = 200.0                 # real singing from 0.08 s
+    assert first_voiced_time(t, f0, run=6) == pytest.approx(0.08)
+    assert np.isnan(first_voiced_time(t, np.full(20, np.nan)))
+
+
+def test_save_attempt_extra_meta(tmp_path):
+    sr = 44100
+    stream = PitchStream(NumpyYin(sample_rate=sr, frame_length=2048), tonic_hz=132.0,
+                         hop_length=256, smoothing_frames=1)
+    att = Attempt(stream)
+    att.add(np.zeros(4096, dtype=np.float32))
+    phrase = Phrase(tmp_path / "song" / "live_01.wav", np.zeros(10), sr, None)
+    wav = save_attempt(att, phrase, "freeform", 1.0, 132.0, 0.0, out_dir=tmp_path / "a",
+                       extra={"same_key": True, "voice_start_seconds": 0.6})
+    meta = json.loads(wav.with_suffix(".meta.json").read_text(encoding="utf-8"))
+    assert meta["same_key"] is True and meta["voice_start_seconds"] == 0.6
+    assert meta["mode"] == "freeform"

@@ -22,7 +22,7 @@ HELP = ("Space start/stop   L loop   [ ] speed   M mode   N/P next/prev phrase  
 class PracticeView(QtWidgets.QMainWindow):
     def __init__(self, engine: PracticeEngine, phrase_path: Path, settings: dict,
                  scale: Scale | None, my_tonic: float | None, mode: str = "after",
-                 speed: float = 1.0, loop: bool = False):
+                 speed: float = 1.0, loop: bool = False, same_key: bool | None = None):
         super().__init__()
         self.engine = engine
         self.settings = settings
@@ -39,6 +39,8 @@ class PracticeView(QtWidgets.QMainWindow):
         self.speed = float(speed)
         self.loop = loop
         self.my_tonic_override = my_tonic
+        self.same_key_override = same_key
+        self.same_key = False
         self.phrases = sibling_phrases(Path(phrase_path))
         self.index = self.phrases.index(Path(phrase_path)) if Path(phrase_path) in self.phrases else 0
         self.attempt: Attempt | None = None
@@ -118,11 +120,20 @@ class PracticeView(QtWidgets.QMainWindow):
         self.stretched = {}
         self.count = 0
         self.shift = 0.0
-        teacher_tonic = self.phrase.curve.tonic_hz if self.phrase.curve else \
-            float(self.settings.get("tonic", {}).get("teacher_hz") or 185.0)
+        from ..config import load_song_config, resolve_tonics
+        curve = self.phrase.curve
+        teacher_tonic, my_tonic, self.same_key = resolve_tonics(
+            load_song_config(self.phrase.audio_path.parent), self.settings,
+            curve_tonic=curve.tonic_hz if curve is not None else None,
+            my_tonic=self.my_tonic_override, same_key=self.same_key_override)
+        teacher_tonic = teacher_tonic or 185.0
+        if curve is not None and abs(curve.tonic_hz - teacher_tonic) > 1e-6:
+            self.phrase.curve = curve.with_tonic(teacher_tonic)
         self.teacher_tonic = teacher_tonic
-        my_tonic = self.my_tonic_override or self.settings.get("tonic", {}).get("mine_hz") or teacher_tonic
-        self.stream: PitchStream = build_pitch_stream(self.settings, float(my_tonic))
+        if self.same_key:
+            my_tonic = teacher_tonic       # the teacher sang in my range: no transposing
+            self.fold = False
+        self.stream: PitchStream = build_pitch_stream(self.settings, float(my_tonic or teacher_tonic))
         self.my_curve.setData([], [])
         self._redraw_teacher()
         self._update_header()
@@ -187,15 +198,16 @@ class PracticeView(QtWidgets.QMainWindow):
     def _finish_attempt(self):
         if self.attempt is not None and self.attempt.blocks:
             wav = save_attempt(self.attempt, self.phrase, self.mode, self.speed,
-                               self.teacher_tonic, self.shift)
+                               self.teacher_tonic, self.shift,
+                               extra={"same_key": self.same_key})
             self.count += 1
             msg = f"saved {wav.name}"
             if self.phrase.curve is not None:
                 try:
-                    from ..compare import score_curves, record_score
+                    from ..compare import score_attempt, record_score
                     tol = float(self.settings.get("scoring", {}).get("tolerance_cents", 25))
-                    result = score_curves(self.phrase.curve, self.attempt.curve(wav.name),
-                                          tolerance=tol)
+                    result = score_attempt(self.phrase.curve, self.attempt.curve(wav.name),
+                                           tolerance=tol, same_key=self.same_key)
                     record_score(wav, result, "live")
                     self.last_score = result
                     msg += (f"    score: {result.pct_within:.0f}% within {tol:.0f}c, "
@@ -313,11 +325,14 @@ class PracticeView(QtWidgets.QMainWindow):
     def _update_header(self):
         if not hasattr(self, "phrase"):
             return
+        if self.same_key:
+            tonic = f"tonic {self.teacher_tonic:.1f} Hz, same key"
+        else:
+            tonic = f"tonic: teacher {self.teacher_tonic:.1f} Hz / mine {self.stream.tonic_hz:.1f} Hz"
         self.header.setText(
             f"{self.phrase.name}   [{self.index + 1}/{len(self.phrases)}]   "
             f"mode: {self.mode}   speed: {self.speed:.1f}   loop: {'on' if self.loop else 'off'}   "
-            f"voice start: {'on' if self.voice_start else 'off'}   "
-            f"tonic: teacher {self.teacher_tonic:.1f} Hz / mine {self.stream.tonic_hz:.1f} Hz   "
+            f"voice start: {'on' if self.voice_start else 'off'}   {tonic}   "
             f"attempts this phrase: {self.count}")
 
     def _update_state_label(self):
@@ -341,9 +356,11 @@ class PracticeView(QtWidgets.QMainWindow):
 def run_practice_view(engine: PracticeEngine, phrase_path: Path, settings: dict,
                       scale: Scale | None, my_tonic: float | None, mode: str, speed: float,
                       loop: bool, screenshot: str | None = None,
-                      quit_after: float | None = None, autostart: bool = False) -> int:
+                      quit_after: float | None = None, autostart: bool = False,
+                      same_key: bool | None = None) -> int:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    view = PracticeView(engine, phrase_path, settings, scale, my_tonic, mode, speed, loop)
+    view = PracticeView(engine, phrase_path, settings, scale, my_tonic, mode, speed, loop,
+                        same_key=same_key)
     view.resize(1200, 700)
     view.setWindowTitle("avaz practice")
     view.show()

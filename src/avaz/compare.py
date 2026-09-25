@@ -213,6 +213,20 @@ def score_curves(reference: PitchCurve, attempt: PitchCurve, tolerance: float = 
         att_times=at, att_cents=ac)
 
 
+def score_attempt(reference: PitchCurve, attempt: PitchCurve, tolerance: float = 25.0,
+                  same_key: bool = False, **kwargs) -> ScoreResult:
+    """:func:`score_curves` with the song's key choice applied.
+
+    In the same key, the teacher sang in my range, so my pitch is compared as it
+    is: both curves are measured from the teacher's tonic and nothing is shifted
+    by octaves. Otherwise each curve stays relative to its own singer's tonic and
+    octave differences are folded away.
+    """
+    if same_key:
+        attempt = attempt.with_tonic(reference.tonic_hz)
+    return score_curves(reference, attempt, tolerance=tolerance, fold=not same_key, **kwargs)
+
+
 # ------------------------------------------------------------------ attempts and history
 
 def read_meta(attempt_wav: Path) -> dict:

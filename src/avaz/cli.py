@@ -336,13 +336,13 @@ def cmd_practice(args) -> int:
     return run_practice_view(engine, Path(args.phrase), settings, scale,
                              float(args.tonic) if args.tonic else None, args.mode, args.speed,
                              args.loop, screenshot=args.screenshot, quit_after=args.quit_after,
-                             autostart=args.autostart)
+                             autostart=args.autostart, same_key=args.same_key)
 
 
 def cmd_song(args) -> int:
     from .audio_io import load_audio
+    from .config import load_song_config, save_song_config, resolve_tonics
     from .practice import PracticeEngine
-    from .pitch_offline import curve_path_for, load_curve
     from .scales import load_scales
     from .ui.song_view import run_song_view
 
@@ -353,17 +353,26 @@ def cmd_song(args) -> int:
     scale = load_scales()[args.scale] if args.scale else None
 
     src = Path(args.file)
-    tonic_cfg = settings.get("tonic", {})
-    if args.my_tonic:
-        my_tonic = float(args.my_tonic)
-    else:
-        my_tonic = float(tonic_cfg.get("mine_hz") or tonic_cfg.get("teacher_hz") or 0) or None
-        if my_tonic is None:
-            raise SystemExit("no tonic: pass --my-tonic <hz> or set tonic.mine_hz in settings.yaml")
-
-    curve = _load_or_analyze(src, settings, _parse_tonic(args.teacher_tonic, settings))
-    y, file_sr = load_audio(src, sr=sr)
     out_dir = _phrase_out_dir(src, args.out_dir)
+
+    # Choices given on the command line are remembered for this song.
+    teacher_arg = _parse_tonic(args.teacher_tonic, {}) if args.teacher_tonic else None
+    if args.same_key is not None or isinstance(teacher_arg, float):
+        path = save_song_config(out_dir, same_key=args.same_key,
+                                teacher_tonic_hz=teacher_arg if isinstance(teacher_arg, float) else None)
+        print(f"remembered in {path}")
+    song_cfg = load_song_config(out_dir)
+    teacher, mine, same_key = resolve_tonics(
+        song_cfg, settings, my_tonic=float(args.my_tonic) if args.my_tonic else None)
+    if teacher_arg in ("auto", "final"):
+        teacher = teacher_arg
+
+    curve = _load_or_analyze(src, settings, teacher if teacher else "auto")
+    if same_key:
+        mine = curve.tonic_hz
+    if not mine:
+        raise SystemExit("no tonic: pass --my-tonic <hz> or set tonic.mine_hz in settings.yaml")
+    y, _ = load_audio(src, sr=sr)
 
     engine = PracticeEngine(sr, block,
                             input_device=_resolve_device(args.device, "input"),
@@ -372,16 +381,22 @@ def cmd_song(args) -> int:
     print(f"input: {engine.input_name}")
     print(f"output: {engine.output_name}")
     print(f"stream latency in/out: {1000 * engine.latency[0]:.0f} / {1000 * engine.latency[1]:.0f} ms")
-    print(f"tonic: teacher {curve.tonic_hz:.1f} Hz, mine {my_tonic:.1f} Hz")
+    if same_key:
+        print(f"tonic {curve.tonic_hz:.1f} Hz, same key as the teacher (my pitch is not transposed)")
+    else:
+        print(f"tonic: teacher {curve.tonic_hz:.1f} Hz, mine {mine:.1f} Hz (my curve is transposed)")
     print(f"saving stretches I pause on to {out_dir}")
-    return run_song_view(engine, src, y, curve, out_dir, settings, scale, my_tonic,
+    return run_song_view(engine, src, y, curve, out_dir, settings, scale, float(mine),
+                         same_key=same_key,
                          script=args.script.split(",") if args.script else None,
                          screenshot=args.screenshot, quit_after=args.quit_after)
 
 
 def _attempt_wavs(target: Path) -> list[Path]:
+    """Attempt WAVs: one file, one phrase folder, or every phrase folder of a song."""
     if target.is_dir():
-        return sorted(p for p in target.glob("*.wav"))
+        direct = sorted(p for p in target.glob("*.wav"))
+        return direct or sorted(target.rglob("*.wav"))
     if target.suffix == ".json":
         stem = target.name.split(".")[0]
         return [target.with_name(stem + ".wav")]
@@ -389,8 +404,9 @@ def _attempt_wavs(target: Path) -> list[Path]:
 
 
 def cmd_score(args) -> int:
-    from .compare import (score_curves, attempt_curve, reference_for, record_score,
-                          load_history, history_path)
+    from .compare import (score_attempt, attempt_curve, reference_for, record_score,
+                          load_history, history_path, read_meta)
+    from .config import load_song_config
     from .pitch_offline import load_curve
     from .scales import load_scales
     from .plots import plot_score
@@ -403,8 +419,10 @@ def cmd_score(args) -> int:
     if not wavs:
         raise SystemExit(f"no attempts found in {args.attempt}")
     if args.new:
-        done = load_history(history_path(wavs[0]))
-        wavs = [w for w in wavs if w.stem not in done or done[w.stem].get("method") != "offline"]
+        def scored_offline(w):
+            entry = load_history(history_path(w)).get(w.stem, {})
+            return entry.get("method") == "offline"
+        wavs = [w for w in wavs if not scored_offline(w)]
         if not wavs:
             print("nothing new to score")
             return 0
@@ -419,9 +437,16 @@ def cmd_score(args) -> int:
             print(f"{wav.name}: analyzing with pyin ...")
         attempt = attempt_curve(wav, method=method, settings=settings,
                                 tonic_hz=float(args.my_tonic) if args.my_tonic else None)
-        result = score_curves(reference, attempt, tolerance=tol, band=args.band)
+        # Same key: explicit flag, else what the session recorded, else the song's song.yaml.
+        same_key = args.same_key
+        if same_key is None:
+            same_key = read_meta(wav).get("same_key")
+        if same_key is None:
+            same_key = bool(load_song_config(ref_path.parent).get("same_key", False))
+        result = score_attempt(reference, attempt, tolerance=tol, same_key=same_key, band=args.band)
         record_score(wav, result, method)
-        print(f"{wav.name}  vs  {ref_path.name}")
+        print(f"{wav.parent.name}/{wav.name}  vs  {ref_path.name}"
+              + ("   (same key)" if same_key else ""))
         print(result.summary())
         print()
         if (args.plot or args.save_plot) and len(wavs) == 1:
@@ -550,6 +575,9 @@ def build_parser() -> argparse.ArgumentParser:
                                                  "then the phrase's teacher tonic)")
     s.add_argument("--mode", default="after", choices=["after", "along"],
                    help="after: listen then sing; along: sing with the teacher")
+    s.add_argument("--same-key", action=argparse.BooleanOptionalAction, default=None,
+                   help="compare my pitch as it is (the teacher sang in my range). "
+                        "Default: same_key in the phrase folder's song.yaml")
     s.add_argument("--speed", type=float, default=1.0, help="playback speed 0.5 to 1.0")
     s.add_argument("--loop", action="store_true", help="repeat automatically")
     s.add_argument("--device", default=None, help="input device index or name substring")
@@ -570,7 +598,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--my-tonic", default=None,
                    help="my tonic in Hz (default: tonic.mine_hz, then tonic.teacher_hz)")
     s.add_argument("--teacher-tonic", default=None,
-                   help="the recording's tonic in Hz, 'auto' or 'final' (default: tonic.teacher_hz)")
+                   help="the recording's tonic in Hz, 'auto' or 'final'. A number is remembered "
+                        "for this song (default: song.yaml, then tonic.teacher_hz)")
+    s.add_argument("--same-key", action=argparse.BooleanOptionalAction, default=None,
+                   help="the teacher sang this in my range: compare my pitch as it is, no "
+                        "transposing or octave folding. Remembered for this song")
     s.add_argument("--out-dir", default=None,
                    help="where stretches I pause on are saved as phrases (default: "
                         "data/phrases/<recording name>/)")
@@ -591,6 +623,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--my-tonic", default=None,
                    help="my tonic in Hz for the attempt (default: the one stored with the attempt)")
     s.add_argument("--new", action="store_true", help="folder mode: only attempts not scored offline yet")
+    s.add_argument("--same-key", action=argparse.BooleanOptionalAction, default=None,
+                   help="compare my pitch as it is, no transposing or octave folding "
+                        "(default: what the attempt recorded, then the song's song.yaml)")
     s.add_argument("--tolerance", type=float, default=None, help="cents counted as in tune")
     s.add_argument("--band", type=float, default=0.2, help="DTW band as a fraction of the length")
     s.add_argument("--scale", default=None, help="draw guide lines of this scale")

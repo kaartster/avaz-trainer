@@ -166,3 +166,24 @@ def test_score_no_voiced_frames_does_not_crash():
     assert isinstance(r.ref_times, np.ndarray) and r.ref_times.shape == r.ref_cents.shape
     r.summary()                          # must not raise
     r.to_record()                        # must not raise
+
+
+def test_score_attempt_same_key_compares_absolute_pitch():
+    from avaz.compare import score_attempt
+    t, c = melody()
+    teacher = make_curve(t, c, tonic=132.0)
+    # I sing the exact same notes (same Hz) but my curve was measured from another tonic
+    same_notes = make_curve(t, c + 1200 * np.log2(132.0 / 146.8), tonic=146.8)
+    assert score_attempt(teacher, same_notes, same_key=True).mad < 1
+    # a major third low in absolute pitch: same key must NOT forgive it
+    low = make_curve(t, c - 400, tonic=132.0)
+    r = score_attempt(teacher, low, same_key=True)
+    assert r.octave_shift == 0 and r.pct_within == 0
+    assert r.median_offset == pytest.approx(-400, abs=5)
+    # a full octave low: same key must not fold it either
+    octave_low = make_curve(t, c - 1200, tonic=132.0)
+    r = score_attempt(teacher, octave_low, same_key=True)
+    assert r.octave_shift == 0 and r.pct_within == 0
+    assert r.median_offset == pytest.approx(-1200, abs=5)
+    # outside same key, the octave is folded away as before
+    assert score_attempt(teacher, octave_low, same_key=False).mad < 1
