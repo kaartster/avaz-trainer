@@ -54,6 +54,11 @@ practice:
   onset_preroll_seconds: 0.15   # audio kept from just before the trigger
   wait_timeout_seconds: 15      # give up waiting for my voice after this long
 
+display:
+  style: notes              # "notes": a lane per scale note that lights up while a voice
+                            # stays on it (simple). "curve": detailed curves in cents.
+                            # D switches between them in the practice windows
+
 scoring:
   tolerance_cents: 25       # a frame within this deviation counts as "in tune"
 

@@ -220,6 +220,68 @@ def test_freeform_stop_from_any_phase():
     assert s.phase == PLAY and s.segment_start == 200
 
 
+def test_freeform_starts_after_a_cut_intro():
+    s = FreeformSession(total_len=1000, start_at=300)
+    assert s.pos == 300 and s.segment_start == 300
+    s.toggle()
+    assert s.phase == PLAY and s.segment_start == 300
+    assert FreeformSession(total_len=1000, start_at=5000).pos == 1000   # clamped
+
+
+def test_freeform_cut_intro_while_playing_keeps_playing_from_there():
+    s = FreeformSession(total_len=100000)
+    s.toggle(); s.advance(8000)
+    assert s.cut_intro() == 8000
+    assert s.phase == PLAY and s.start_at == 8000 and s.segment_start == 8000
+    s.advance(4000); s.toggle()
+    assert s.phase == RESPOND and (s.segment_start, s.segment_end) == (8000, 12000)
+
+
+def test_freeform_cut_intro_while_responding_drops_that_stretch():
+    s = FreeformSession(total_len=100000)
+    s.toggle(); s.advance(8000); s.toggle()       # paused after the intro
+    assert s.cut_intro() == 8000
+    assert s.phase == PLAY and s.segment_start == 8000 and s.pos == 8000
+    assert s.segments == []                       # the intro is never finalized
+
+
+def test_freeform_replay_last_goes_back_after_moving_on():
+    s = FreeformSession(total_len=100000)
+    s.toggle(); s.advance(10000); s.toggle(); s.toggle()   # sang [0, 10000], moved on
+    s.advance(3000)
+    assert s.phase == PLAY and s.pos == 13000
+    s.replay_last()
+    assert s.phase == PLAY and s.pos == 0 and s.auto_pause_at == 10000
+    s.advance(12000)                               # pauses by itself at the end
+    assert s.phase == RESPOND and (s.segment_start, s.segment_end) == (0, 10000)
+    s.toggle()                                     # move on again from the same spot
+    assert s.phase == PLAY and s.pos == 10000
+
+
+def test_freeform_replay_last_while_responding_is_repeat():
+    s = FreeformSession(total_len=100000)
+    s.toggle(); s.advance(10000); s.toggle()
+    s.replay_last()
+    assert s.phase == PLAY and s.pos == 0 and s.auto_pause_at == 10000
+
+
+def test_freeform_replay_last_before_any_stretch():
+    s = FreeformSession(total_len=100000)
+    s.replay_last()                                # nothing heard yet: no-op
+    assert s.phase == IDLE
+    s.toggle(); s.advance(5000)
+    s.replay_last()                                # replays what was heard so far
+    assert s.pos == 0 and s.auto_pause_at == 5000
+
+
+def test_freeform_replay_last_after_the_end():
+    s = FreeformSession(total_len=1000)
+    s.toggle(); s.advance(1500); s.toggle()        # last stretch done, session over
+    assert s.phase == IDLE
+    s.replay_last()
+    assert s.phase == PLAY and s.pos == 0 and s.auto_pause_at == 1000 and not s.reached_end
+
+
 def test_next_live_index(tmp_path):
     assert next_live_index(tmp_path) == 1
     (tmp_path / "live_01.wav").write_bytes(b"")

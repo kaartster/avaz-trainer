@@ -39,3 +39,21 @@ def test_resolve_tonics_argument_overrides_song_key_choice():
     assert same is False and mine == 146.8
     teacher, mine, same = resolve_tonics({}, SETTINGS, my_tonic=150.0)
     assert mine == 150.0
+
+
+def test_resolve_tonics_uses_the_key_chosen_for_the_song():
+    teacher, mine, same = resolve_tonics({"my_tonic_hz": 164.8}, SETTINGS)
+    assert mine == 164.8 and same is False
+    assert resolve_tonics({"my_tonic_hz": 164.8}, SETTINGS, my_tonic=150.0)[1] == 150.0
+    # Singing in the teacher's key ignores a key chosen earlier.
+    assert resolve_tonics({"my_tonic_hz": 164.8, "same_key": True, "teacher_tonic_hz": 167.0},
+                          SETTINGS)[1] == 167.0
+
+
+def test_user_prefs_round_trip_keeps_none(tmp_path):
+    from avaz.config import load_user_prefs, save_user_prefs
+    path = tmp_path / "user.yaml"
+    assert load_user_prefs(path) == {}
+    save_user_prefs({"my_tonic_hz": 146.8, "input_device": None}, path)
+    save_user_prefs({"scale": "dashti"}, path)
+    assert load_user_prefs(path) == {"my_tonic_hz": 146.8, "input_device": None, "scale": "dashti"}

@@ -190,3 +190,23 @@ def curve_path_for(audio_path: str | Path) -> Path:
     """Where the pitch curve JSON of an audio file lives: next to it, same stem."""
     p = Path(audio_path)
     return p.with_suffix(".pitch.json")
+
+
+def load_or_analyze(src: str | Path, settings: dict, tonic, reanalyze: bool = False,
+                    log=print) -> PitchCurve:
+    """The pitch curve of an audio file, analyzing it (and caching the result) if needed.
+
+    A cached curve is re-expressed against ``tonic`` when that is a number.
+    """
+    src = Path(src)
+    cached = curve_path_for(src)
+    if cached.exists() and not reanalyze:
+        log(f"using cached curve {cached.name}")
+        curve = load_curve(cached)
+        if tonic not in ("auto", "final", None) and abs(float(tonic) - curve.tonic_hz) > 1e-6:
+            curve = curve.with_tonic(float(tonic))
+        return curve
+    log(f"analyzing {src.name} (this takes a while) ...")
+    curve = analyze_file(src, tonic_hz=tonic, settings=settings)
+    save_curve(curve, cached)
+    return curve

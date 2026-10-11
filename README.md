@@ -38,6 +38,35 @@ singing) uses Demucs, which pulls in PyTorch:
 pip install demucs
 ```
 
+## The main window
+
+```bash
+avaz gui
+```
+
+Everything below can be done from one window, without command line arguments:
+
+- **Songs** on the left are the recordings in `data/teacher/`, with the key
+  you sing each one in and how many attempts you have made.
+- **Add recording...** copies a file from your teacher into the library. If
+  the recording has an instrument besides the voice, the voice is separated
+  first (Demucs, a few minutes); then the pitch is analyzed.
+- **Teacher's tonic**: the analysis only guesses it, so check it. If you have
+  the same song in another key, pick it under "compare with" and press
+  **Measure**: the two recordings are lined up note by note, which is much more
+  reliable than the guess.
+- **I sing in**: either the teacher's key (your pitch is compared exactly as
+  you sing it) or your own key, picked by note name (Do, Re, Mi ... with the
+  Western name and octave next to it) and fine tuned in Hz. Each song remembers
+  its own choice, and the last key you chose becomes your default for new songs.
+- **Scale**, **Practice** (the whole song, or the phrases saved from it),
+  the **Intro** cut, your sound devices, and **Progress** per song.
+
+Song choices are saved in `data/phrases/<song>/song.yaml` and your own
+preferences in `data/user.yaml`, the same files the command line reads. `data/`
+is not in git, so every classmate who clones the project keeps their own
+recordings, keys and scores.
+
 ## Workflow for a new teacher recording
 
 ```bash
@@ -95,13 +124,23 @@ silent for `practice.wait_timeout_seconds`, the attempt is dropped.
 
 Keys: Space start or stop, L loop on/off, `[` and `]` slower or faster (0.5 to 1.0,
 pitch unchanged), M switch mode, N and P next or previous phrase in the folder,
-O toggle octave folding of your curve, V toggle voice start (off = the cursor starts
+D notes or detailed curve, O toggle octave folding of your curve, V toggle voice start (off = the cursor starts
 right after the phrase), Esc quit.
 
 Your tonic defaults to `tonic.mine_hz` in settings, then the teacher's. If you sing
 an octave lower than the teacher, the red curve is shifted up by an octave so the
 shapes line up (`practice.fold_octave`). Use headphones if the mic picks up the
 speakers, or set `--gain` lower.
+
+## Note blocks or detailed curve
+
+Both practice windows start in the simple look: one shaded lane per note of the
+dastgah, named after the real note in the key you sing in (for Dashti on Mi:
+Mi, Fa sori, Sol, La, Si, Do, Re). While a voice stays on a note, its lane
+lights up: blue blocks for the teacher, and for you green when you are within
+`scoring.tolerance_cents` (25) of the note and orange when you are further off.
+Thin lines on top still show the ornaments. Press **D** for the detailed curve
+in cents with dashed guide lines; `display.style` in settings picks the start.
 
 ## Song mode (no pre-cut phrases needed)
 
@@ -118,10 +157,18 @@ whole thing:
   done singing to save your attempt and let the teacher continue from there.
 - **R**: instead of moving on, replay the stretch you just sang and try it
   again.
-- **Esc**: stop. Reopening later resumes from where you left off in that
-  recording.
+- **Backspace**: replay the last stretch you sang, even after the teacher has
+  already moved on to the next one. It pauses by itself at the end of the
+  stretch, so you can sing straight away without pressing Space.
+- **Delete**: everything before this point is intro. Press it the first time
+  you hear a song, right where the singing you want to practice begins (or
+  while paused after the intro, which drops that whole stretch). The cut is
+  saved as `intro_end_seconds` in the song's `song.yaml`, shaded grey on the
+  chart, and every later session starts there. **Shift+Delete** removes it.
+- **D**: switch between note blocks and the detailed curve (see below).
+- **Esc**: stop.
 
-Every stretch you pause on is saved the first time as a normal phrase,
+Every stretch you sing along to is saved the first time as a normal phrase,
 `data/phrases/<song>/live_01.wav`, `live_02.wav`, and so on, with its own
 pitch curve and an entry in `labels.txt`, exactly as if you had labeled it in
 Audacity. That means `avaz score`, `avaz history` and ordinary
@@ -143,16 +190,18 @@ this mode yet.
 
 ## Same key or transposed
 
-By default your curve is measured from your own tonic (`tonic.mine_hz`) and the
-teacher's from theirs, so you can sing a recording in your own key and still
-compare shapes. When the teacher sang a recording in your range, compare
-absolute pitch instead:
+By default your curve is measured from your own tonic and the teacher's from
+theirs, so you can sing a recording in your own key and still compare shapes.
+Your tonic is the key chosen for the song (`my_tonic_hz` in its song.yaml, set
+in `avaz gui` or with `--my-tonic`), otherwise `tonic.mine_hz` in settings.
+When you sing in the teacher's key, compare absolute pitch instead:
 
 ```bash
 avaz song data/teacher/song.vocals.wav --same-key --teacher-tonic 132
+avaz song data/teacher/song.vocals.wav --no-same-key --my-tonic 164.8   # sing it in Mi
 ```
 
-Both choices are remembered in `data/phrases/<song>/song.yaml`, and practice
+These choices are remembered in `data/phrases/<song>/song.yaml`, and practice
 mode and `avaz score` read the same file for that song's phrases. In the same
 key nothing is transposed or octave folded: singing a third or an octave off
 shows up as exactly that. `--no-same-key` switches back.

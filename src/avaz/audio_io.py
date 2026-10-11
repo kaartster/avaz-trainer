@@ -109,3 +109,36 @@ def list_devices() -> str:
     except Exception as exc:
         lines.append(f"(could not read default devices: {exc})")
     return "\n".join(lines)
+
+
+def device_names(kind: str) -> list[str]:
+    """Names of the input (``kind="input"``) or output devices of the default host API.
+
+    Windows lists every device once per host API (MME, DirectSound, WASAPI ...);
+    only the default one is shown so each device appears once.
+    """
+    import sounddevice as sd
+    key = "max_input_channels" if kind == "input" else "max_output_channels"
+    api = sd.default.hostapi
+    # The MME "Sound Mapper" entries are just aliases of the system default.
+    return [d["name"] for d in sd.query_devices()
+            if d[key] > 0 and d["hostapi"] == api and "Sound Mapper" not in d["name"]]
+
+
+def resolve_device(spec, kind: str):
+    """Device index, or a case-insensitive substring of the device name, or None (default).
+
+    Raises ValueError when nothing matches.
+    """
+    if spec is None or spec == "":
+        return None
+    try:
+        return int(spec)
+    except ValueError:
+        pass
+    import sounddevice as sd
+    key = "max_input_channels" if kind == "input" else "max_output_channels"
+    for i, d in enumerate(sd.query_devices()):
+        if d[key] > 0 and str(spec).lower() in d["name"].lower():
+            return i
+    raise ValueError(f"no {kind} device matching '{spec}'")

@@ -214,6 +214,14 @@ class PracticeEngine:
         with self._lock:
             self.session.repeat()
 
+    def replay_last(self) -> None:
+        with self._lock:
+            self.session.replay_last()
+
+    def cut_intro(self) -> int:
+        with self._lock:
+            return self.session.cut_intro()
+
     def start(self) -> None:
         self._stream.start()
 
@@ -317,8 +325,12 @@ class FreeformSession:
     replays the stretch I just sang instead of moving on. Positions are counted
     in samples, like :class:`Session`; :meth:`advance` must be called with every
     block the sound card processes.
+
+    ``start_at`` skips an intro I cut earlier (:meth:`cut_intro`): the session
+    begins there instead of at sample 0.
     """
     total_len: int
+    start_at: int = 0
     phase: str = IDLE
     pos: int = 0
     segment_start: int = 0
@@ -326,6 +338,10 @@ class FreeformSession:
     auto_pause_at: int | None = None
     reached_end: bool = False
     segments: list = field(default_factory=list)   # (start, end) of every finalized stretch
+
+    def __post_init__(self):
+        self.start_at = int(min(max(self.start_at, 0), self.total_len))
+        self.pos = self.segment_start = self.start_at
 
     def advance(self, frames: int) -> str:
         active = self.phase
@@ -371,6 +387,46 @@ class FreeformSession:
         self.segments.append((self.segment_start, self.segment_end))
         self.segment_start = self.segment_end
         self.phase = IDLE if self.reached_end else PLAY
+
+    def replay_last(self) -> None:
+        """Go back to the stretch I sang last, replay it and pause at its end.
+
+        While the teacher is already playing the next stretch, this replays the
+        previous finalized one. While responding it is the same as :meth:`repeat`.
+        Before any stretch is finalized it replays from the start of the current
+        stretch up to where playback is now.
+        """
+        if self.phase == RESPOND:
+            self.repeat()
+            return
+        if self.segments:
+            start, end = self.segments[-1]
+        elif self.phase == PLAY and self.pos > self.segment_start:
+            start, end = self.segment_start, self.pos
+        else:
+            return
+        self.segment_start = self.pos = start
+        self.auto_pause_at = end
+        self.reached_end = False
+        self.phase = PLAY
+
+    def cut_intro(self) -> int:
+        """Everything before here is intro: start the song here from now on.
+
+        While playing, the cut is the current position and playback goes on. While
+        responding, the whole stretch just heard is intro: it is dropped (not
+        finalized) and playback continues after it. Returns the new start sample.
+        """
+        if self.phase == RESPOND:
+            cut = self.segment_end
+            self.segment_start = cut
+            self.phase = IDLE if self.reached_end else PLAY
+        else:
+            cut = self.pos
+            self.segment_start = cut
+        self.start_at = cut
+        self.segments = [s for s in self.segments if s[0] >= cut]
+        return cut
 
     def stop(self) -> None:
         self.phase = IDLE

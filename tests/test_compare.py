@@ -227,3 +227,15 @@ def test_key_offset_needs_enough_voiced_frames():
     from avaz.compare import estimate_key_offset
     teacher = notes_curve([(0, 1), (200, 1)])
     assert np.isnan(estimate_key_offset(teacher, np.array([0.0, 5.0, np.nan])))
+
+
+def test_tonic_from_reference_finds_the_new_key():
+    from avaz.compare import tonic_from_reference
+    t, c = melody()
+    reference = make_curve(t, c, tonic=185.0)
+    # The same tune sung 180 cents lower (about 167 Hz), analyzed against a 185 Hz guess.
+    f0_low = 185.0 * 2 ** ((c - 180) / 1200)
+    lower = make_curve(t, hz_to_cents(f0_low, 185.0), tonic=185.0)
+    assert tonic_from_reference(lower, reference) == pytest.approx(185.0 * 2 ** (-180 / 1200), rel=0.004)
+    empty = make_curve(t, np.full(t.size, np.nan))
+    assert np.isnan(tonic_from_reference(empty, reference))

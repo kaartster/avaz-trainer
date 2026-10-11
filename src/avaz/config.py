@@ -36,8 +36,8 @@ def load_settings(path: Path | None = None) -> dict[str, Any]:
 
 # ---------------------------------------------------------------- per-song settings
 #
-# Some choices belong to one recording, not to the whole app: its tonic, and
-# whether the teacher sang it in my own key. They live in ``song.yaml`` inside
+# Some choices belong to one recording, not to the whole app: its tonic, the key
+# I sing it in, and whether that is the teacher's own key. They live in ``song.yaml`` inside
 # the song's phrase folder (data/phrases/<song>/), which is where both song mode
 # and phrase practice look, so they only have to be set once.
 
@@ -73,7 +73,8 @@ def resolve_tonics(song_cfg: dict, settings: dict, curve_tonic: float | None = N
     """Decide ``(teacher_tonic, my_tonic, same_key)`` for one practice session.
 
     Explicit arguments win, then the song's song.yaml, then the recording's own
-    curve, then settings.yaml. With ``same_key`` the teacher sang in my range, so
+    curve, then settings.yaml. The key I sing in is ``my_tonic_hz`` in song.yaml (each
+    student picks their own in ``avaz gui``). With ``same_key`` I sing in the teacher's key, so
     both curves use the teacher's tonic: my pitch is compared as it is, never
     transposed. ``teacher_tonic`` comes back None when nothing is known, and the
     caller then estimates it from the recording.
@@ -86,6 +87,36 @@ def resolve_tonics(song_cfg: dict, settings: dict, curve_tonic: float | None = N
     if same:
         mine = teacher
     else:
-        mine = my_tonic or tonic_settings.get("mine_hz") or teacher
+        mine = my_tonic or song_cfg.get("my_tonic_hz") or tonic_settings.get("mine_hz") or teacher
         mine = float(mine) if mine else None
     return teacher, mine, same
+
+
+# ---------------------------------------------------------------- user preferences
+#
+# Choices of the person using this copy of the app (default key, sound devices,
+# last song) live in data/user.yaml. data/ is not in git, so every classmate who
+# clones the project keeps their own.
+
+def user_prefs_path() -> Path:
+    return data_dir() / "user.yaml"
+
+
+def load_user_prefs(path: Path | None = None) -> dict[str, Any]:
+    path = path or user_prefs_path()
+    if not path.exists():
+        return {}
+    with open(path, "r", encoding="utf-8") as fh:
+        return yaml.safe_load(fh) or {}
+
+
+def save_user_prefs(updates: dict[str, Any], path: Path | None = None) -> Path:
+    """Merge ``updates`` into user.yaml. Unlike song.yaml, ``None`` is stored (it means
+    "system default" for a device)."""
+    path = path or user_prefs_path()
+    prefs = load_user_prefs(path)
+    prefs.update(updates)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        yaml.safe_dump(prefs, fh, allow_unicode=True, sort_keys=True)
+    return path

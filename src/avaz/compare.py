@@ -209,6 +209,21 @@ def estimate_key_offset(reference_cents, attempt_cents, bin_cents: float = 10.0,
     return float(-(lags[i] + frac) * bin_cents)
 
 
+def tonic_from_reference(curve: PitchCurve, reference: PitchCurve) -> float:
+    """Tonic of ``curve`` in Hz, measured against another recording of the same song.
+
+    When the teacher sings a song again in another key, the notes keep their
+    places relative to the tonic, so the shift between the two pitch histograms is
+    exactly the change of key. This is more reliable than guessing the tonic from
+    the strongest note, which in Dashti is often a whole tone below the tonic.
+    NaN when either curve has too little singing.
+    """
+    offset = estimate_key_offset(reference.cents, curve.cents)
+    if not np.isfinite(offset):
+        return float("nan")
+    return float(curve.tonic_hz * 2.0 ** (offset / 1200.0))
+
+
 def score_curves(reference: PitchCurve, attempt: PitchCurve, tolerance: float = 25.0,
                  bin_seconds: float = 0.02, band: float = 0.2, fold: bool = True) -> ScoreResult:
     """Align ``attempt`` to ``reference`` (both in cents relative to their own tonic)."""

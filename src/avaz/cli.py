@@ -140,18 +140,8 @@ def cmd_histogram(args) -> int:
 
 def _load_or_analyze(src: Path, settings: dict, tonic, reanalyze: bool = False):
     """Return the pitch curve of an audio file, analyzing it if no cached curve exists."""
-    from .pitch_offline import analyze_file, load_curve, save_curve, curve_path_for
-    cached = curve_path_for(src)
-    if cached.exists() and not reanalyze:
-        print(f"using cached curve {cached.name}")
-        curve = load_curve(cached)
-        if tonic not in ("auto", "final") and abs(tonic - curve.tonic_hz) > 1e-6:
-            curve = curve.with_tonic(tonic)
-        return curve
-    print(f"analyzing {src.name} (this takes a while) ...")
-    curve = analyze_file(src, tonic_hz=tonic, settings=settings)
-    save_curve(curve, cached)
-    return curve
+    from .pitch_offline import load_or_analyze
+    return load_or_analyze(src, settings, tonic, reanalyze=reanalyze)
 
 
 def cmd_separate(args) -> int:
@@ -269,18 +259,11 @@ def cmd_callresponse(args) -> int:
 
 def _resolve_device(spec, kind: str):
     """Device index, or a case-insensitive substring of the device name, or None."""
-    if spec is None or spec == "":
-        return None
+    from .audio_io import resolve_device
     try:
-        return int(spec)
-    except ValueError:
-        pass
-    import sounddevice as sd
-    key = "max_input_channels" if kind == "input" else "max_output_channels"
-    for i, d in enumerate(sd.query_devices()):
-        if d[key] > 0 and spec.lower() in d["name"].lower():
-            return i
-    raise SystemExit(f"no {kind} device matching '{spec}' (see avaz devices)")
+        return resolve_device(spec, kind)
+    except ValueError as exc:
+        raise SystemExit(f"{exc} (see avaz devices)")
 
 
 def cmd_live(args) -> int:
@@ -340,8 +323,8 @@ def cmd_practice(args) -> int:
 
 
 def cmd_song(args) -> int:
-    from .audio_io import load_audio
-    from .config import load_song_config, save_song_config, resolve_tonics
+    from .config import save_song_config
+    from .library import prepare_song
     from .practice import PracticeEngine
     from .scales import load_scales
     from .ui.song_view import run_song_view
@@ -357,22 +340,13 @@ def cmd_song(args) -> int:
 
     # Choices given on the command line are remembered for this song.
     teacher_arg = _parse_tonic(args.teacher_tonic, {}) if args.teacher_tonic else None
-    if args.same_key is not None or isinstance(teacher_arg, float):
-        path = save_song_config(out_dir, same_key=args.same_key,
+    my_arg = float(args.my_tonic) if args.my_tonic else None
+    if args.same_key is not None or isinstance(teacher_arg, float) or my_arg:
+        path = save_song_config(out_dir, same_key=args.same_key, my_tonic_hz=my_arg,
                                 teacher_tonic_hz=teacher_arg if isinstance(teacher_arg, float) else None)
         print(f"remembered in {path}")
-    song_cfg = load_song_config(out_dir)
-    teacher, mine, same_key = resolve_tonics(
-        song_cfg, settings, my_tonic=float(args.my_tonic) if args.my_tonic else None)
-    if teacher_arg in ("auto", "final"):
-        teacher = teacher_arg
-
-    curve = _load_or_analyze(src, settings, teacher if teacher else "auto")
-    if same_key:
-        mine = curve.tonic_hz
-    if not mine:
-        raise SystemExit("no tonic: pass --my-tonic <hz> or set tonic.mine_hz in settings.yaml")
-    y, _ = load_audio(src, sr=sr)
+    setup = prepare_song(src, out_dir, settings, sr, my_tonic=my_arg,
+                         teacher_tonic=teacher_arg if teacher_arg in ("auto", "final") else None)
 
     engine = PracticeEngine(sr, block,
                             input_device=_resolve_device(args.device, "input"),
@@ -381,15 +355,24 @@ def cmd_song(args) -> int:
     print(f"input: {engine.input_name}")
     print(f"output: {engine.output_name}")
     print(f"stream latency in/out: {1000 * engine.latency[0]:.0f} / {1000 * engine.latency[1]:.0f} ms")
-    if same_key:
-        print(f"tonic {curve.tonic_hz:.1f} Hz, same key as the teacher (my pitch is not transposed)")
+    if setup.same_key:
+        print(f"tonic {setup.teacher_tonic:.1f} Hz, same key as the teacher (my pitch is not transposed)")
     else:
-        print(f"tonic: teacher {curve.tonic_hz:.1f} Hz, mine {mine:.1f} Hz (my curve is transposed)")
+        print(f"tonic: teacher {setup.teacher_tonic:.1f} Hz, mine {setup.my_tonic:.1f} Hz "
+              f"(my curve is transposed)")
     print(f"saving stretches I pause on to {out_dir}")
-    return run_song_view(engine, src, y, curve, out_dir, settings, scale, float(mine),
-                         same_key=same_key,
+    if setup.start_seconds > 0:
+        print(f"skipping the intro: starting at {setup.start_seconds:.1f} s "
+              f"(Shift+Delete in the window undoes it)")
+    return run_song_view(engine, src, setup.audio, setup.curve, out_dir, settings, scale,
+                         setup.my_tonic, same_key=setup.same_key, start_seconds=setup.start_seconds,
                          script=args.script.split(",") if args.script else None,
                          screenshot=args.screenshot, quit_after=args.quit_after)
+
+
+def cmd_gui(args) -> int:
+    from .ui.launcher import run_launcher
+    return run_launcher(screenshot=args.screenshot, quit_after=args.quit_after)
 
 
 def _attempt_wavs(target: Path) -> list[Path]:
@@ -485,6 +468,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="avaz", description="Persian classical singing trainer")
     p.add_argument("--version", action="version", version=f"avaz {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
+
+    s = sub.add_parser("gui", help="open the main window: pick a song, choose your key, practice")
+    s.add_argument("--screenshot", default=None, help=argparse.SUPPRESS)
+    s.add_argument("--quit-after", type=float, default=None, help=argparse.SUPPRESS)
+    s.set_defaults(func=cmd_gui)
 
     s = sub.add_parser("devices", help="list audio input and output devices")
     s.set_defaults(func=cmd_devices)
@@ -596,7 +584,7 @@ def build_parser() -> argparse.ArgumentParser:
                                 "has accompaniment)")
     s.add_argument("--scale", default=None, help="scale name from scales.yaml for guide lines")
     s.add_argument("--my-tonic", default=None,
-                   help="my tonic in Hz (default: tonic.mine_hz, then tonic.teacher_hz)")
+                   help="the key I sing in, in Hz (remembered for this song; default: tonic.mine_hz)")
     s.add_argument("--teacher-tonic", default=None,
                    help="the recording's tonic in Hz, 'auto' or 'final'. A number is remembered "
                         "for this song (default: song.yaml, then tonic.teacher_hz)")

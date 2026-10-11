@@ -8,15 +8,15 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ..cents import OCTAVE
 from ..live import PitchStream, build_pitch_stream
 from ..practice import (IDLE, PLAY, WAIT, RESPOND, DONE, SPEEDS, Attempt, OnsetDetector,
                         PracticeEngine, Session, load_phrase, octave_shift, save_attempt,
                         sibling_phrases, time_stretch)
 from ..scales import Scale
+from .note_display import NoteDisplay
 
 HELP = ("Space start/stop   L loop   [ ] speed   M mode   N/P next/prev phrase   "
-        "O octave fold   V voice start   Esc quit")
+        "D notes/curve   O octave fold   V voice start   Esc quit")
 
 
 class PracticeView(QtWidgets.QMainWindow):
@@ -77,11 +77,11 @@ class PracticeView(QtWidgets.QMainWindow):
         self.plot.setMouseEnabled(x=False, y=True)
         layout.addWidget(self.plot, stretch=1)
 
-        self.guides: list = []
-        self.teacher_curve = self.plot.plot([], [], pen=pg.mkPen(self.colors.get("teacher", "#1f77b4"),
-                                                                 width=2), connect="finite")
-        self.my_curve = self.plot.plot([], [], pen=pg.mkPen(self.colors.get("mine", "#d62728"),
-                                                            width=2), connect="finite")
+        display = self.settings.get("display", {})
+        self.display = NoteDisplay(
+            self.plot, self.scale, self.colors, None,
+            notes=display.get("style", "notes") == "notes",
+            tolerance=float(self.settings.get("scoring", {}).get("tolerance_cents", 25)))
         self.cursor = pg.InfiniteLine(0, angle=90, pen=pg.mkPen("#ffffff", width=1))
         self.plot.addItem(self.cursor)
 
@@ -93,25 +93,6 @@ class PracticeView(QtWidgets.QMainWindow):
         self.state_label.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(self.state_label)
         self.statusBar().showMessage(HELP)
-
-    def _draw_guides(self, lo, hi):
-        for g in self.guides:
-            self.plot.removeItem(g)
-        self.guides = []
-        if self.scale is None:
-            line = pg.InfiniteLine(0, angle=0, pen=pg.mkPen(self.colors.get("tonic", "#2ca02c"), width=2))
-            self.plot.addItem(line)
-            self.guides.append(line)
-            return
-        for c, label in self.scale.positions_in_range(lo, hi):
-            is_tonic = abs(c % OCTAVE) < 1e-6
-            pen = pg.mkPen(self.colors.get("tonic" if is_tonic else "guide", "#888888"),
-                           width=2 if is_tonic else 1,
-                           style=QtCore.Qt.SolidLine if is_tonic else QtCore.Qt.DashLine)
-            line = pg.InfiniteLine(c, angle=0, pen=pen, label=label,
-                                   labelOpts={"position": 0.01, "color": "#aaaaaa", "movable": False})
-            self.plot.addItem(line)
-            self.guides.append(line)
 
     # ---------------------------------------------------------------- phrase
     def _load_phrase(self, path: Path):
@@ -134,17 +115,16 @@ class PracticeView(QtWidgets.QMainWindow):
             my_tonic = teacher_tonic       # the teacher sang in my range: no transposing
             self.fold = False
         self.stream: PitchStream = build_pitch_stream(self.settings, float(my_tonic or teacher_tonic))
-        self.my_curve.setData([], [])
+        self.display.set_name_tonic(self.stream.tonic_hz)
+        self.display.set_mine([], [])
         self._redraw_teacher()
         self._update_header()
 
     def _redraw_teacher(self):
         c = self.phrase.curve
         if c is None:
-            self.teacher_curve.setData([], [])
             lo, hi = -700, 1900
         else:
-            self.teacher_curve.setData(c.times / self.speed, c.cents)
             finite = c.cents[np.isfinite(c.cents)]
             if finite.size:
                 lo = float(np.floor((np.percentile(finite, 1) - 300) / 100) * 100)
@@ -154,7 +134,11 @@ class PracticeView(QtWidgets.QMainWindow):
         self.plot.setYRange(lo, hi, padding=0)
         self.plot.setXRange(0, self.phrase.duration / self.speed + (self.margin if self.mode == "after" else 0),
                             padding=0.01)
-        self._draw_guides(lo, hi)
+        self.display.set_range(lo, hi)
+        if c is None:
+            self.display.set_teacher([], [])
+        else:
+            self.display.set_teacher(c.times / self.speed, c.cents)
 
     def _play_buffer(self) -> np.ndarray:
         if self.speed not in self.stretched:
@@ -176,7 +160,7 @@ class PracticeView(QtWidgets.QMainWindow):
                                    rms_db=float(pr.get("onset_rms_db", -40)),
                                    voiced_frames=int(pr.get("onset_voiced_frames", 6)),
                                    preroll_seconds=float(pr.get("onset_preroll_seconds", 0.15)))
-        self.my_curve.setData([], [])
+        self.display.set_mine([], [])
         self.shift = 0.0
         self._redraw_teacher()
         self.engine.begin(self.session, buf)
@@ -253,6 +237,8 @@ class PracticeView(QtWidgets.QMainWindow):
             self._change_phrase(+1)
         elif key == QtCore.Qt.Key_P:
             self._change_phrase(-1)
+        elif key == QtCore.Qt.Key_D:
+            self.display.toggle()
         elif key == QtCore.Qt.Key_O:
             self.fold = not self.fold
             if not self.fold:
@@ -310,7 +296,7 @@ class PracticeView(QtWidgets.QMainWindow):
             c = np.array([p[2] for p in self.attempt.points])
             if self.fold and self.phrase.curve is not None:
                 self.shift = octave_shift(c, self.phrase.curve.cents)
-            self.my_curve.setData(t, c + self.shift)
+            self.display.set_mine(t, c + self.shift)
         if phase in (PLAY, RESPOND):
             self.cursor.setPos(self.session.pos / sr)
         elif phase == WAIT:

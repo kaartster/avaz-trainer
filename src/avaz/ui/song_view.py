@@ -3,7 +3,11 @@
 Unlike :mod:`practice_view`, there are no pre-cut phrases. I walk through the
 recording myself: Space starts it, Space again pauses it right where I want to
 sing, and Space a third time saves what I sang and moves the teacher on from
-that same spot. R replays the stretch I just sang instead of moving on. Every
+that same spot. R replays the stretch I just sang instead of moving on, and
+Backspace does the same even after the teacher has moved on: it goes back to
+the last stretch, replays it and pauses at its end. Delete marks everything
+before the current spot as intro; the cut is kept in the song's song.yaml and
+later sessions start there. Every
 stretch I pause on is saved as a normal phrase (WAV plus pitch curve) the first
 time I finish it, so it works afterwards with ``avaz score``, ``avaz history``
 and ordinary ``avaz practice``.
@@ -28,20 +32,24 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ..cents import OCTAVE, octave_shift
+from ..cents import octave_shift
+from ..config import save_song_config
 from ..live import build_pitch_stream
 from ..practice import (IDLE, PLAY, RESPOND, Attempt, FreeformSession, OnsetDetector,
                         PracticeEngine, export_live_segment, first_voiced_time, load_phrase,
                         save_attempt)
 from ..scales import Scale
+from .note_display import NoteDisplay
 
-HELP = "Space start/pause/next   R repeat this stretch   V voice start   O octave fold   Esc quit"
+HELP = ("Space start/pause/next   R or Backspace repeat last stretch   Del cut intro here "
+        "(Shift+Del undo)   D notes/curve   V voice start   O octave fold   Esc quit")
 
 
 class SongView(QtWidgets.QMainWindow):
     def __init__(self, engine: PracticeEngine, song_path: Path, song_audio: np.ndarray,
                  teacher_curve, out_dir: Path, settings: dict, scale: Scale | None,
-                 my_tonic: float, same_key: bool = False, view_seconds: float = 20.0):
+                 my_tonic: float, same_key: bool = False, view_seconds: float = 20.0,
+                 start_seconds: float = 0.0):
         super().__init__()
         self.engine = engine
         self.settings = settings
@@ -58,11 +66,13 @@ class SongView(QtWidgets.QMainWindow):
         self.voice_start = bool(self.pr.get("start_on_voice", True))
         self.grace_samples = int(float(self.pr.get("onset_grace_seconds", 0.4)) * engine.sample_rate)
 
-        self.freeform = FreeformSession(total_len=song_audio.size)
+        self.freeform = FreeformSession(total_len=song_audio.size,
+                                        start_at=int(round(start_seconds * engine.sample_rate)))
         self.engine.load(self.freeform, song_audio)
         self._prev_phase = IDLE
-        self._exported_key: tuple[int, int] | None = None
-        self._exported_wav: Path | None = None
+        self._exported: dict[tuple[int, int], Path] = {}   # stretch -> its phrase WAV
+        self._resp_key: tuple[int, int] | None = None     # stretch being answered now
+        self._discard = False           # Delete during a response: it was intro, keep nothing
         self.attempt: Attempt | None = None
         self.onset: OnsetDetector | None = None
         self._resp_samples = 0          # samples heard since the pause
@@ -107,19 +117,24 @@ class SongView(QtWidgets.QMainWindow):
                 lo = float(np.floor((np.percentile(finite, 0.5) - 200) / 100) * 100)
                 hi = float(np.ceil((np.percentile(finite, 99.5) + 200) / 100) * 100)
         self.plot.setYRange(lo, hi, padding=0)
-        self._draw_guides(lo, hi)
-
-        self.teacher_line = self.plot.plot(
-            c.times if c is not None else [], c.cents if c is not None else [],
-            pen=pg.mkPen(self.colors.get("teacher", "#1f77b4"), width=1.3), connect="finite")
-        self.my_curve = self.plot.plot([], [], pen=pg.mkPen(self.colors.get("mine", "#d62728"),
-                                                            width=2), connect="finite")
+        display = self.settings.get("display", {})
+        self.display = NoteDisplay(
+            self.plot, self.scale, self.colors, self.my_tonic,
+            notes=display.get("style", "notes") == "notes",
+            tolerance=float(self.settings.get("scoring", {}).get("tolerance_cents", 25)))
+        self.display.set_range(lo, hi)
+        if c is not None:
+            self.display.set_teacher(c.times, c.cents)
         self.cursor = pg.InfiniteLine(0, angle=90, pen=pg.mkPen("#ffffff", width=1))
         self.plot.addItem(self.cursor)
         self.segment_box = pg.LinearRegionItem(values=(0, 0), movable=False,
                                                brush=(255, 255, 255, 20))
         self.segment_box.setVisible(False)
         self.plot.addItem(self.segment_box)
+        self.intro_box = pg.LinearRegionItem(values=(0, 0), movable=False,
+                                             brush=(128, 128, 128, 70))
+        self.plot.addItem(self.intro_box)
+        self._update_intro_box()
 
         self.state_label = QtWidgets.QLabel("Space to begin")
         f2 = QtGui.QFont()
@@ -130,19 +145,6 @@ class SongView(QtWidgets.QMainWindow):
         layout.addWidget(self.state_label)
         self.statusBar().showMessage(HELP)
 
-    def _draw_guides(self, lo, hi):
-        if self.scale is None:
-            self.plot.addItem(pg.InfiniteLine(0, angle=0,
-                              pen=pg.mkPen(self.colors.get("tonic", "#2ca02c"), width=2)))
-            return
-        for cents, label in self.scale.positions_in_range(lo, hi):
-            is_tonic = abs(cents % OCTAVE) < 1e-6
-            pen = pg.mkPen(self.colors.get("tonic" if is_tonic else "guide", "#888888"),
-                           width=2 if is_tonic else 1,
-                           style=QtCore.Qt.SolidLine if is_tonic else QtCore.Qt.DashLine)
-            self.plot.addItem(pg.InfiniteLine(cents, angle=0, pen=pen, label=label,
-                              labelOpts={"position": 0.01, "color": "#aaaaaa", "movable": False}))
-
     # ------------------------------------------------------------------ actions
     def keyPressEvent(self, event):
         key = event.key()
@@ -152,14 +154,43 @@ class SongView(QtWidgets.QMainWindow):
             self.engine.toggle()
         elif key == QtCore.Qt.Key_R:
             self.engine.repeat_segment()
+        elif key == QtCore.Qt.Key_Backspace:
+            self.engine.replay_last()
+        elif key == QtCore.Qt.Key_Delete:
+            if event.modifiers() & QtCore.Qt.ShiftModifier:
+                self._clear_intro()
+            else:
+                self._cut_intro()
         elif key == QtCore.Qt.Key_V:
             self.voice_start = not self.voice_start
+        elif key == QtCore.Qt.Key_D:
+            self.display.toggle()
         elif key == QtCore.Qt.Key_O:
             self.fold = not self.fold
             if not self.fold:
                 self.shift = 0.0
         else:
             super().keyPressEvent(event)
+
+    def _cut_intro(self):
+        if self.freeform.phase == RESPOND:
+            self._discard = True
+        cut = self.engine.cut_intro() / self.engine.sample_rate
+        save_song_config(self.out_dir, intro_end_seconds=round(cut, 2))
+        self._update_intro_box()
+        self.statusBar().showMessage(f"intro cut at {cut:.1f} s, next time the song starts "
+                                     f"there    {HELP}")
+
+    def _clear_intro(self):
+        self.freeform.start_at = 0
+        save_song_config(self.out_dir, intro_end_seconds=0.0)
+        self._update_intro_box()
+        self.statusBar().showMessage(f"intro cut removed, next time the song starts at 0 s    {HELP}")
+
+    def _update_intro_box(self):
+        end = self.freeform.start_at / self.engine.sample_rate
+        self.intro_box.setRegion((0, end))
+        self.intro_box.setVisible(end > 0)
 
     def closeEvent(self, event):
         self.timer.stop()
@@ -219,12 +250,10 @@ class SongView(QtWidgets.QMainWindow):
             m = (c.times >= start / sr) & (c.times < end / sr)
             t0 = first_voiced_time(c.times[m] - start / sr, c.f0_hz[m])
             self._teacher_onset = t0 if np.isfinite(t0) else 0.0
-        self.my_curve.setData([], [])
+        self.display.set_mine([], [])
         self.shift = 0.0
-        if (start, end) != self._exported_key:
-            wav = export_live_segment(self.engine.play_buffer, sr, self.teacher_curve,
-                                      start / sr, end / sr, self.out_dir)
-            self._exported_key, self._exported_wav = (start, end), wav
+        self._resp_key = (start, end)
+        self._discard = False
 
     def _feed_response(self, block: np.ndarray):
         if not self.voice_start:
@@ -244,13 +273,19 @@ class SongView(QtWidgets.QMainWindow):
 
     def _end_response(self):
         attempt, self.attempt = self.attempt, None
-        if attempt is None or self._exported_wav is None:
+        if attempt is None or self._resp_key is None or self._discard:
             return
         if not attempt.blocks:
             self.statusBar().showMessage(f"no voice heard, nothing saved    {HELP}")
             return
         sr = self.engine.sample_rate
-        phrase = load_phrase(self._exported_wav, sr)
+        # The stretch becomes a phrase only once I have actually sung it, so stretches
+        # I skip or cut as intro never leave files behind. Repeats reuse the same file.
+        start, end = self._resp_key
+        if self._resp_key not in self._exported:
+            self._exported[self._resp_key] = export_live_segment(
+                self.engine.play_buffer, sr, self.teacher_curve, start / sr, end / sr, self.out_dir)
+        phrase = load_phrase(self._exported[self._resp_key], sr)
         extra = {"same_key": self.same_key}
         if self._voice_at is not None:
             extra["voice_start_seconds"] = round(self._voice_at, 3)
@@ -296,7 +331,7 @@ class SongView(QtWidgets.QMainWindow):
             seg = c.cents[(c.times >= self.freeform.segment_start / sr) &
                           (c.times < self.freeform.segment_end / sr)]
             self.shift = octave_shift(cts, seg, min_points=5)
-        self.my_curve.setData(t + self._x_origin(sr), cts + self.shift)
+        self.display.set_mine(t + self._x_origin(sr), cts + self.shift)
 
     def _update_cursor(self, phase, sr):
         if phase != RESPOND:
@@ -326,8 +361,10 @@ class SongView(QtWidgets.QMainWindow):
         total_s = self.freeform.total_len / self.engine.sample_rate
         pos_s = self.freeform.pos / self.engine.sample_rate
         key = "same as teacher" if self.same_key else f"transposed to mine ({self.my_tonic:.1f} Hz)"
+        intro_s = self.freeform.start_at / self.engine.sample_rate
+        intro = f"   intro cut at {intro_s:.1f} s" if intro_s > 0 else ""
         self.header.setText(
-            f"{pos_s:6.1f} / {total_s:6.1f} s   tonic {self.teacher_tonic:.1f} Hz   key: {key}   "
+            f"{pos_s:6.1f} / {total_s:6.1f} s{intro}   tonic {self.teacher_tonic:.1f} Hz   key: {key}   "
             f"voice start: {'on' if self.voice_start else 'off'}   "
             f"fold: {'on' if self.fold else 'off'}   saved: {self.saved_count}")
         if phase == IDLE:
@@ -347,11 +384,11 @@ class SongView(QtWidgets.QMainWindow):
 
 def run_song_view(engine: PracticeEngine, song_path: Path, song_audio, teacher_curve,
                   out_dir: Path, settings: dict, scale: Scale | None, my_tonic: float,
-                  same_key: bool = False, script: list | None = None,
+                  same_key: bool = False, start_seconds: float = 0.0, script: list | None = None,
                   screenshot: str | None = None, quit_after: float | None = None) -> int:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     view = SongView(engine, song_path, song_audio, teacher_curve, out_dir, settings, scale,
-                    my_tonic, same_key=same_key)
+                    my_tonic, same_key=same_key, start_seconds=start_seconds)
     view.resize(1200, 700)
     view.show()
     engine.start()
@@ -375,7 +412,8 @@ def run_song_view(engine: PracticeEngine, song_path: Path, song_audio, teacher_c
                     sd.play(y, sr)
                 QtCore.QTimer.singleShot(int(t * 1000), _play)
                 continue
-            action = {"space": engine.toggle, "repeat": engine.repeat_segment}.get(step)
+            action = {"space": engine.toggle, "repeat": engine.repeat_segment,
+                      "back": engine.replay_last, "delete": view._cut_intro}.get(step)
             if action:
                 QtCore.QTimer.singleShot(int(t * 1000), action)
     if quit_after:
