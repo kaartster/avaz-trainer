@@ -11,6 +11,7 @@ dastgah itself always come from scales.yaml in cents.
 from __future__ import annotations
 
 import math
+import re
 
 SOLFEGE = ["Do", "Do diez", "Re", "Mi bemol", "Mi", "Fa", "Fa diez", "Sol", "Sol diez",
            "La", "Si bemol", "Si"]
@@ -70,3 +71,66 @@ def scale_note_name(tonic_hz: float, cents: float) -> str:
     if upper in _NATURAL:
         return f"{SOLFEGE[upper]} koron"
     return SOLFEGE[index]
+
+
+# ---------------------------------------------------------------- key from a file name
+#
+# The teacher names recordings after their key: "دشتی فا دیز" (Dashti in Fa diez),
+# "دشتی ر", "دشتی می بمل". The name gives the note but not the octave, so the
+# octave is picked from where the voice actually sits (see tonic_from_name).
+
+_PERSIAN_NOTES = {"دو": 0, "ره": 2, "ر": 2, "ری": 2, "می": 4, "فا": 5, "سل": 7, "سول": 7,
+                  "لا": 9, "سی": 11}
+_LATIN_NOTES = {"do": 0, "re": 2, "mi": 4, "fa": 5, "sol": 7, "la": 9, "si": 11}
+_SHARP = ("دیز", "diez", "dies", "sharp", "#")
+_FLAT = ("بمل", "bemol", "flat")
+
+# Longest names first, so "سول" is tried before "سل" and "ره" before "ر".
+_NOTE_ALTERNATIVES = "|".join(sorted(list(_PERSIAN_NOTES) + list(_LATIN_NOTES), key=len, reverse=True))
+_KEY_PATTERN = re.compile(
+    rf"(?<![^\W_])({_NOTE_ALTERNATIVES})[ _-]?({'|'.join(_SHARP + _FLAT)})?(?![^\W_#])",
+    re.IGNORECASE)
+
+
+def key_from_name(name: str) -> int | None:
+    """Note index (0 = Do ... 11 = Si) of the key written in a recording's name, or None.
+
+    The last note name in the text wins, because the key is written at the end
+    ("کعبه دلها _ دشتی ر"), and words earlier in a title can look like note
+    names ("می" is also a common verb prefix in Persian).
+    """
+    text = str(name).replace("\u200c", "")            # zero width non-joiner
+    for suffix in (".vocals", ".accompaniment"):
+        text = text.replace(suffix, " ")
+    text = re.sub(r"\.\w+$", "", text)                       # file extension
+    text = re.sub(r"[\"'«»“”]", " ", text)
+    matches = list(_KEY_PATTERN.finditer(text))
+    if not matches:
+        return None
+    note, accidental = matches[-1].group(1).lower(), (matches[-1].group(2) or "").lower()
+    index = _PERSIAN_NOTES.get(note, _LATIN_NOTES.get(note))
+    if accidental in _SHARP:
+        index += 1
+    elif accidental in _FLAT:
+        index -= 1
+    return index % 12
+
+
+# In Dashti the melody sits mostly below the tonic: across the teacher's recordings the
+# median pitch is 200 to 250 cents (about a whole tone) under it.
+TONIC_ABOVE_MEDIAN_CENTS = 250.0
+
+
+def tonic_from_name(name: str, median_hz: float | None) -> float | None:
+    """The tonic in Hz from the key in ``name``, in the octave that fits the voice.
+
+    ``median_hz`` is the median pitch of the recording's voiced frames. The tonic
+    is the octave of the named note closest to ``TONIC_ABOVE_MEDIAN_CENTS`` above it.
+    None when the name has no key or there is no pitch to place it.
+    """
+    index = key_from_name(name)
+    if index is None or not median_hz or not math.isfinite(median_hz) or median_hz <= 0:
+        return None
+    target = 69 + 12 * math.log2(median_hz / A4_HZ) + TONIC_ABOVE_MEDIAN_CENTS / 100.0
+    midi = index + 12 * round((target - index) / 12)
+    return A4_HZ * 2.0 ** ((midi - 69) / 12.0)

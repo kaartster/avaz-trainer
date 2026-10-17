@@ -57,3 +57,9 @@ def test_user_prefs_round_trip_keeps_none(tmp_path):
     save_user_prefs({"my_tonic_hz": 146.8, "input_device": None}, path)
     save_user_prefs({"scale": "dashti"}, path)
     assert load_user_prefs(path) == {"my_tonic_hz": 146.8, "input_device": None, "scale": "dashti"}
+
+
+def test_resolve_tonics_file_name_key_comes_after_song_yaml_before_curve():
+    assert resolve_tonics({}, SETTINGS, curve_tonic=138.3, name_tonic=155.6)[0] == 155.6
+    assert resolve_tonics({"teacher_tonic_hz": 150.0}, SETTINGS, name_tonic=155.6)[0] == 150.0
+    assert resolve_tonics({}, SETTINGS, name_tonic=155.6, teacher_tonic=140.0)[0] == 140.0

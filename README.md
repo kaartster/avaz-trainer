@@ -51,10 +51,14 @@ Everything below can be done from one window, without command line arguments:
 - **Add recording...** copies a file from your teacher into the library. If
   the recording has an instrument besides the voice, the voice is separated
   first (Demucs, a few minutes); then the pitch is analyzed.
-- **Teacher's tonic**: the analysis only guesses it, so check it. If you have
-  the same song in another key, pick it under "compare with" and press
+- **Teacher's tonic**: read from the file name when the teacher wrote the key
+  in it ("... دشتی می بمل" is Mi bemol, "... فا دیز" is Fa diez, "... ر" is
+  Re). The name gives the note; the octave is picked from where the voice sits
+  (in Dashti the melody centers about a whole tone under the tonic). Without
+  a key in the name the analysis only guesses, so check it. If you have the
+  same song in another key, pick it under "compare with" and press
   **Measure**: the two recordings are lined up note by note, which is much more
-  reliable than the guess.
+  reliable than the guess. A tonic typed here always wins.
 - **I sing in**: either the teacher's key (your pitch is compared exactly as
   you sing it) or your own key, picked by note name (Do, Re, Mi ... with the
   Western name and octave next to it) and fine tuned in Hz. Each song remembers
@@ -152,7 +156,7 @@ An alternative to slicing in Audacity first: play the whole recording and
 choose where to pause and sing as you go. One key walks forward through the
 whole thing:
 
-- **Space**: start the recording playing. Press it again whenever you want to
+- **Space** (or **Enter**): start the recording playing. Press it again whenever you want to
   stop and sing back what you just heard. Press it a third time when you are
   done singing to save your attempt and let the teacher continue from there.
 - **R**: instead of moving on, replay the stretch you just sang and try it
@@ -166,7 +170,35 @@ whole thing:
   saved as `intro_end_seconds` in the song's `song.yaml`, shaded grey on the
   chart, and every later session starts there. **Shift+Delete** removes it.
 - **D**: switch between note blocks and the detailed curve (see below).
+- **T**: drone on or off: a soft steady tone on your home note to sing
+  against, which helps the ear hear when a note is too high or too low. Use
+  headphones: through the speakers the microphone hears the drone too. When you
+  sing in another key than the teacher it stays quiet while the teacher plays.
+  Its loudness is `practice.drone_gain`.
 - **Esc**: stop.
+
+### Tips in plain words
+
+After each stretch, the panel under the chart says how it went, without numbers.
+**Tips** in the main window picks how strict it is (saved per person in
+`data/user.yaml`):
+
+- **Gentle** (the default): only the teacher's long, steady notes are judged;
+  fast ornaments are left out. A note counts as hit when you held its pitch,
+  within a quarter tone, for about a third of its length, up to half a second
+  early or late. You get stars and "You hit 6 of 9 long notes", a cheer when
+  it is better than your last try of that stretch, and **one** tip for next
+  time, the most general first: "aim a bit higher overall", then the one note
+  that was furthest off, then holding notes steady, then timing. Only notes off
+  by half a tone or more are shaded on the chart (at most two). While you sing,
+  "a bit higher" or "a bit lower" appears under the chart only when you stay
+  clearly off for half a second; being on the note shows nothing.
+- **Detailed**: every moment within 25 cents, up to three problem spots with
+  arrows on the chart, a line per kind of problem, and a live arrow next to
+  your line.
+
+The thresholds are in the `feedback` section of `config/settings.yaml`. Phrase
+practice shows the same tips.
 
 Every stretch you sing along to is saved the first time as a normal phrase,
 `data/phrases/<song>/live_01.wav`, `live_02.wav`, and so on, with its own

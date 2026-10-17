@@ -332,3 +332,27 @@ def test_save_attempt_extra_meta(tmp_path):
     meta = json.loads(wav.with_suffix(".meta.json").read_text(encoding="utf-8"))
     assert meta["same_key"] is True and meta["voice_start_seconds"] == 0.6
     assert meta["mode"] == "freeform"
+
+
+def test_drone_loops_without_a_seam_and_respects_play():
+    from avaz.practice import DroneMixer, make_drone
+    sr = 44100
+    y = make_drone(146.83, sr)
+    assert y.dtype == np.float32 and np.abs(y).max() == pytest.approx(1.0)
+    # Looping: the step from the last sample back to the first is like any other step.
+    steps = np.abs(np.diff(np.concatenate([y, y[:1]])))
+    assert steps[-1] <= steps.max() + 1e-6
+    # The strongest frequency is the tonic.
+    spec = np.abs(np.fft.rfft(np.tile(y, 3)))
+    assert np.fft.rfftfreq(3 * y.size, 1 / sr)[spec.argmax()] == pytest.approx(146.83, abs=0.5)
+
+    mixer = DroneMixer(y, gain=0.5, during_play=False)
+    out = np.zeros(256, dtype=np.float32)
+    mixer.mix(out, PLAY)
+    assert not out.any() and mixer.pos == 256          # silent while the teacher plays, but runs on
+    mixer.mix(out, RESPOND)
+    assert np.allclose(out, 0.5 * y[256:512])
+    mixer.pos = y.size - 10                           # wraps around the end of the buffer
+    out = np.zeros(20, dtype=np.float32)
+    mixer.mix(out, IDLE)
+    assert np.allclose(out, 0.5 * np.concatenate([y[-10:], y[:10]]))

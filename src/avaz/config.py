@@ -69,11 +69,13 @@ def save_song_config(folder: str | Path, **updates) -> Path:
 
 def resolve_tonics(song_cfg: dict, settings: dict, curve_tonic: float | None = None,
                    my_tonic: float | None = None, teacher_tonic: float | None = None,
-                   same_key: bool | None = None) -> tuple[float | None, float | None, bool]:
+                   same_key: bool | None = None, name_tonic: float | None = None,
+                   ) -> tuple[float | None, float | None, bool]:
     """Decide ``(teacher_tonic, my_tonic, same_key)`` for one practice session.
 
-    Explicit arguments win, then the song's song.yaml, then the recording's own
-    curve, then settings.yaml. The key I sing in is ``my_tonic_hz`` in song.yaml (each
+    Explicit arguments win, then the song's song.yaml, then the key written in the
+    recording's file name (``name_tonic``, see :func:`keys.tonic_from_name`), then
+    the recording's own curve, then settings.yaml. The key I sing in is ``my_tonic_hz`` in song.yaml (each
     student picks their own in ``avaz gui``). With ``same_key`` I sing in the teacher's key, so
     both curves use the teacher's tonic: my pitch is compared as it is, never
     transposed. ``teacher_tonic`` comes back None when nothing is known, and the
@@ -81,7 +83,7 @@ def resolve_tonics(song_cfg: dict, settings: dict, curve_tonic: float | None = N
     """
     tonic_settings = settings.get("tonic", {})
     same = bool(song_cfg.get("same_key", False)) if same_key is None else bool(same_key)
-    teacher = (teacher_tonic or song_cfg.get("teacher_tonic_hz") or curve_tonic
+    teacher = (teacher_tonic or song_cfg.get("teacher_tonic_hz") or name_tonic or curve_tonic
                or tonic_settings.get("teacher_hz"))
     teacher = float(teacher) if teacher else None
     if same:

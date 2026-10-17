@@ -57,7 +57,7 @@ class LiveView(QtWidgets.QMainWindow):
         self.status = self.statusBar()
         self.status.showMessage(
             f"input: {getattr(source, 'name', '?')}   tonic: {stream.tonic_hz:.1f} Hz   "
-            f"scale: {scale.name if scale else 'none'}   [Esc quit, Space pause, R reset]")
+            f"scale: {scale.name if scale else 'none'}   [Esc quit, Space or Enter pause, R reset]")
 
         self.timer = QtCore.QTimer(self)
         self.timer.setInterval(30)
@@ -94,7 +94,7 @@ class LiveView(QtWidgets.QMainWindow):
         key = event.key()
         if key == QtCore.Qt.Key_Escape:
             self.close()
-        elif key == QtCore.Qt.Key_Space:
+        elif key in (QtCore.Qt.Key_Space, QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter):
             self.paused = not self.paused
         elif key == QtCore.Qt.Key_R:
             self.trace = LiveTrace(self.history, self.stream.hop_length / self.stream.sample_rate)

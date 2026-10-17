@@ -8,6 +8,7 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ..feedback import HIGHER, LOWER, attempt_feedback, gentle_feedback, note_hits
 from ..live import PitchStream, build_pitch_stream
 from ..practice import (IDLE, PLAY, WAIT, RESPOND, DONE, SPEEDS, Attempt, OnsetDetector,
                         PracticeEngine, Session, load_phrase, octave_shift, save_attempt,
@@ -15,7 +16,7 @@ from ..practice import (IDLE, PLAY, WAIT, RESPOND, DONE, SPEEDS, Attempt, OnsetD
 from ..scales import Scale
 from .note_display import NoteDisplay
 
-HELP = ("Space start/stop   L loop   [ ] speed   M mode   N/P next/prev phrase   "
+HELP = ("Space or Enter start/stop   L loop   [ ] speed   M mode   N/P next/prev phrase   "
         "D notes/curve   O octave fold   V voice start   Esc quit")
 
 
@@ -45,6 +46,7 @@ class PracticeView(QtWidgets.QMainWindow):
         self.index = self.phrases.index(Path(phrase_path)) if Path(phrase_path) in self.phrases else 0
         self.attempt: Attempt | None = None
         self.last_score = None
+        self._last_hits: dict[str, tuple[int, int]] = {}   # phrase -> (hit, sung) of my last try
         self.session = Session(0, 0, mode)
         self.stretched: dict[float, np.ndarray] = {}
         self.shift = 0.0
@@ -92,6 +94,14 @@ class PracticeView(QtWidgets.QMainWindow):
         self.state_label.setFont(font2)
         self.state_label.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(self.state_label)
+
+        self.feedback_label = QtWidgets.QLabel("After each attempt, tips appear here.")
+        self.feedback_label.setWordWrap(True)
+        font3 = QtGui.QFont()
+        font3.setPointSize(13)
+        self.feedback_label.setFont(font3)
+        self.feedback_label.setStyleSheet("padding: 4px 8px")
+        layout.addWidget(self.feedback_label)
         self.statusBar().showMessage(HELP)
 
     # ---------------------------------------------------------------- phrase
@@ -179,6 +189,19 @@ class PracticeView(QtWidgets.QMainWindow):
         self.session = Session(0, 0, self.mode)
         self._update_header()
 
+    def _show_feedback(self, hints):
+        lines = []
+        for h in hints:
+            if not h.text:
+                continue                    # chart marks: this window has none
+            text = h.text.replace("&", "&amp;").replace("<", "&lt;")
+            if h.kind == "overall":
+                text = f"<b>{text}</b>"
+            if h.direction in (HIGHER, LOWER):
+                text = f'<span style="color:#e67e22">{text}</span>'
+            lines.append(text)
+        self.feedback_label.setText("<br>".join(lines))
+
     def _finish_attempt(self):
         if self.attempt is not None and self.attempt.blocks:
             wav = save_attempt(self.attempt, self.phrase, self.mode, self.speed,
@@ -194,11 +217,16 @@ class PracticeView(QtWidgets.QMainWindow):
                                            tolerance=tol, same_key=self.same_key)
                     record_score(wav, result, "live")
                     self.last_score = result
-                    msg += (f"    score: {result.pct_within:.0f}% within {tol:.0f}c, "
-                            f"mean {result.mad:.0f}c")
-                    if result.worst:
-                        w = result.worst[0]
-                        msg += f", worst {w.start:.1f}-{w.end:.1f}s {w.mean_dev:+.0f}c"
+                    fb = self.settings.get("feedback", {})
+                    if fb.get("level", "gentle") != "detailed":
+                        key = str(self.phrase.audio_path)
+                        self._show_feedback(gentle_feedback(result, self.stream.tonic_hz, 0.0, fb,
+                                                            previous=self._last_hits.get(key)))
+                        self._last_hits[key] = note_hits(result, fb)
+                    else:
+                        msg += (f"    score: {result.pct_within:.0f}% within {tol:.0f}c, "
+                                f"mean {result.mad:.0f}c")
+                        self._show_feedback(attempt_feedback(result, self.stream.tonic_hz, 0.0, fb))
                 except Exception as exc:          # scoring must never break practice
                     msg += f"    (score failed: {exc})"
             self.statusBar().showMessage(f"{msg}    {HELP}")
@@ -216,7 +244,7 @@ class PracticeView(QtWidgets.QMainWindow):
         key, text = event.key(), event.text()
         if key == QtCore.Qt.Key_Escape:
             self.close()
-        elif key == QtCore.Qt.Key_Space:
+        elif key in (QtCore.Qt.Key_Space, QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter):
             if self.session.phase == IDLE:
                 self._start()
             else:
@@ -324,7 +352,7 @@ class PracticeView(QtWidgets.QMainWindow):
     def _update_state_label(self):
         phase = self.session.phase
         if phase == IDLE:
-            txt, color = "Space to start", "#aaaaaa"
+            txt, color = "Space or Enter to start", "#aaaaaa"
         elif phase == PLAY:
             txt, color = ("LISTEN" if self.mode == "after" else "SING ALONG"), "#3498db"
         elif phase == WAIT:

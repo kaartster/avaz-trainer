@@ -22,10 +22,19 @@ teacher's last note.
 Same key: when the teacher sang the recording in my own range (``same_key`` in
 the song's song.yaml), my pitch is drawn and scored as it is, measured from the
 teacher's tonic, with no transposition and no octave folding.
+
+Tips in plain words: after each stretch a panel under the chart says how it
+went. The gentle level (``feedback.level``, the default) counts the long notes I
+hit, says when I did better than my last try, gives one tip for next time and
+shades only the notes that were really off. While I sing, "a bit higher" or "a
+bit lower" appears under the chart only when I stay off for a while. The
+detailed level gives more tips, arrows on the chart and a live arrow next to my
+line. T starts a drone: a soft steady tone on my tonic to sing against.
 """
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import numpy as np
@@ -34,15 +43,21 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..cents import octave_shift
 from ..config import save_song_config
+from ..feedback import (HIGHER, LOWER, OK, LiveHold, attempt_feedback, gentle_feedback,
+                        live_direction, note_hits)
 from ..live import build_pitch_stream
-from ..practice import (IDLE, PLAY, RESPOND, Attempt, FreeformSession, OnsetDetector,
-                        PracticeEngine, export_live_segment, first_voiced_time, load_phrase,
-                        save_attempt)
+from ..practice import (IDLE, PLAY, RESPOND, Attempt, DroneMixer, FreeformSession,
+                        OnsetDetector, PracticeEngine, export_live_segment, first_voiced_time,
+                        load_phrase, make_drone, save_attempt)
 from ..scales import Scale
 from .note_display import NoteDisplay
 
-HELP = ("Space start/pause/next   R or Backspace repeat last stretch   Del cut intro here "
-        "(Shift+Del undo)   D notes/curve   V voice start   O octave fold   Esc quit")
+HELP = ("Space or Enter start/pause/next   R or Backspace repeat last stretch   Del cut intro here "
+        "(Shift+Del undo)   D notes/curve   T drone   V voice start   O octave fold   Esc quit")
+
+ARROWS = {HIGHER: ("↑", "#f39c12", "sing higher"), LOWER: ("↓", "#f39c12", "sing lower"),
+          OK: ("✓", "#2ecc71", "on the note")}
+SPOT_BRUSH = (231, 76, 60, 45)
 
 
 class SongView(QtWidgets.QMainWindow):
@@ -81,6 +96,14 @@ class SongView(QtWidgets.QMainWindow):
         self._teacher_onset = 0.0       # where singing starts in the teacher's stretch
         self.shift = 0.0
         self.saved_count = 0
+        self.fb = settings.get("feedback", {})
+        self.gentle = self.fb.get("level", "gentle") != "detailed"
+        gentle_cfg = self.fb.get("gentle") or {}
+        self.live_hold = LiveHold(float(gentle_cfg.get("live_hold_seconds", 0.5)))
+        self._last_hits: dict[tuple[int, int], tuple[int, int]] = {}   # stretch -> (hit, sung)
+        self.live_hint: int | None = None
+        self._marks: list = []          # problem spots of the last attempt on the chart
+        self.drone_on = False
 
         self._build_ui()
         self.setWindowTitle(f"avaz song: {song_path.stem}")
@@ -117,6 +140,7 @@ class SongView(QtWidgets.QMainWindow):
                 lo = float(np.floor((np.percentile(finite, 0.5) - 200) / 100) * 100)
                 hi = float(np.ceil((np.percentile(finite, 99.5) + 200) / 100) * 100)
         self.plot.setYRange(lo, hi, padding=0)
+        self._y_top = hi
         display = self.settings.get("display", {})
         self.display = NoteDisplay(
             self.plot, self.scale, self.colors, self.my_tonic,
@@ -135,8 +159,24 @@ class SongView(QtWidgets.QMainWindow):
                                              brush=(128, 128, 128, 70))
         self.plot.addItem(self.intro_box)
         self._update_intro_box()
+        self.arrow = pg.TextItem("", anchor=(0, 0.5))
+        arrow_font = QtGui.QFont()
+        arrow_font.setPointSize(28)
+        arrow_font.setBold(True)
+        self.arrow.setFont(arrow_font)
+        self.arrow.setZValue(20)
+        self.arrow.setVisible(False)
+        self.plot.addItem(self.arrow)
 
-        self.state_label = QtWidgets.QLabel("Space to begin")
+        self.feedback_label = QtWidgets.QLabel("After each stretch you sing, tips appear here.")
+        self.feedback_label.setWordWrap(True)
+        f3 = QtGui.QFont()
+        f3.setPointSize(13)
+        self.feedback_label.setFont(f3)
+        self.feedback_label.setStyleSheet("padding: 4px 8px")
+        layout.addWidget(self.feedback_label)
+
+        self.state_label = QtWidgets.QLabel("Space or Enter to begin")
         f2 = QtGui.QFont()
         f2.setPointSize(20)
         f2.setBold(True)
@@ -150,7 +190,7 @@ class SongView(QtWidgets.QMainWindow):
         key = event.key()
         if key == QtCore.Qt.Key_Escape:
             self.close()
-        elif key == QtCore.Qt.Key_Space:
+        elif key in (QtCore.Qt.Key_Space, QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter):
             self.engine.toggle()
         elif key == QtCore.Qt.Key_R:
             self.engine.repeat_segment()
@@ -165,12 +205,30 @@ class SongView(QtWidgets.QMainWindow):
             self.voice_start = not self.voice_start
         elif key == QtCore.Qt.Key_D:
             self.display.toggle()
+        elif key == QtCore.Qt.Key_T:
+            self._toggle_drone()
         elif key == QtCore.Qt.Key_O:
             self.fold = not self.fold
             if not self.fold:
                 self.shift = 0.0
         else:
             super().keyPressEvent(event)
+
+    def _toggle_drone(self):
+        self.drone_on = not self.drone_on
+        if not self.drone_on:
+            self.engine.set_drone(None)
+            self.statusBar().showMessage(f"drone off    {HELP}")
+            return
+        sr = self.engine.sample_rate
+        gain = float(self.pr.get("drone_gain", 0.12))
+        # In the teacher's key the drone fits the recording too; otherwise it would
+        # clash with the teacher, so it only sounds while I sing.
+        self.engine.set_drone(DroneMixer(make_drone(self.my_tonic, sr), gain,
+                                         during_play=self.same_key))
+        self.statusBar().showMessage(
+            "drone on: a soft tone on your home note. Best with headphones: through the "
+            f"speakers the microphone hears it too    {HELP}")
 
     def _cut_intro(self):
         if self.freeform.phase == RESPOND:
@@ -216,6 +274,9 @@ class SongView(QtWidgets.QMainWindow):
         if leaving_respond:
             self._end_response()
 
+        if phase != RESPOND:
+            self.live_hint = None
+            self.arrow.setVisible(False)
         self._draw_attempt(sr)
         self._update_cursor(phase, sr)
         self._update_view_range(phase, sr)
@@ -251,6 +312,7 @@ class SongView(QtWidgets.QMainWindow):
             t0 = first_voiced_time(c.times[m] - start / sr, c.f0_hz[m])
             self._teacher_onset = t0 if np.isfinite(t0) else 0.0
         self.display.set_mine([], [])
+        self._clear_marks()
         self.shift = 0.0
         self._resp_key = (start, end)
         self._discard = False
@@ -302,13 +364,56 @@ class SongView(QtWidgets.QMainWindow):
                 result = score_attempt(phrase.curve, attempt.curve(wav.name), tolerance=tol,
                                        same_key=self.same_key)
                 record_score(wav, result, "live")
-                msg += f"    score: {result.pct_within:.0f}% within {tol:.0f}c, mean {result.mad:.0f}c"
-                if abs(result.key_offset) >= 10:
-                    word = "sharp" if result.key_offset > 0 else "flat"
-                    msg += f", {word} by {abs(result.key_offset):.0f}c overall"
+                if self.gentle:
+                    key = self._resp_key
+                    self._show_feedback(gentle_feedback(result, self.my_tonic, start / sr, self.fb,
+                                                        previous=self._last_hits.get(key)))
+                    self._last_hits[key] = note_hits(result, self.fb)
+                else:
+                    msg += (f"    score: {result.pct_within:.0f}% within {tol:.0f}c, "
+                            f"mean {result.mad:.0f}c")
+                    self._show_feedback(attempt_feedback(result, self.my_tonic, start / sr, self.fb))
             except Exception as exc:
                 msg += f"    (score failed: {exc})"
         self.statusBar().showMessage(f"{msg}    {HELP}")
+
+    # ------------------------------------------------------------------ feedback
+    def _show_feedback(self, hints):
+        lines = []
+        for h in hints:
+            if not h.text:
+                continue
+            color = "#e67e22" if h.direction in (HIGHER, LOWER) else ""
+            text = h.text.replace("&", "&amp;").replace("<", "&lt;")
+            if h.kind == "overall":
+                text = f"<b>{text}</b>"
+            lines.append(f'<span style="color:{color}">{text}</span>' if color else text)
+        self.feedback_label.setText("<br>".join(lines))
+        self._clear_marks()
+        for h in hints:
+            if h.start is None:
+                continue
+            region = pg.LinearRegionItem(values=(h.start, h.end), movable=False, brush=SPOT_BRUSH,
+                                         pen=pg.mkPen(None))
+            region.setZValue(-1)
+            self.plot.addItem(region)
+            self._marks.append(region)
+            if self.gentle:
+                continue                    # gentle: just the shading, nothing to read
+            symbol = ARROWS[h.direction][0] if h.direction != OK else "~"
+            label = pg.TextItem(symbol, color="#e74c3c", anchor=(0.5, 0))
+            font = QtGui.QFont()
+            font.setPointSize(18)
+            font.setBold(True)
+            label.setFont(font)
+            label.setPos((h.start + h.end) / 2, self._y_top)
+            self.plot.addItem(label)
+            self._marks.append(label)
+
+    def _clear_marks(self):
+        for item in self._marks:
+            self.plot.removeItem(item)
+        self._marks = []
 
     # ------------------------------------------------------------------ drawing
     def _x_origin(self, sr: float) -> float:
@@ -331,7 +436,37 @@ class SongView(QtWidgets.QMainWindow):
             seg = c.cents[(c.times >= self.freeform.segment_start / sr) &
                           (c.times < self.freeform.segment_end / sr)]
             self.shift = octave_shift(cts, seg, min_points=5)
-        self.display.set_mine(t + self._x_origin(sr), cts + self.shift)
+        x = t + self._x_origin(sr)
+        self.display.set_mine(x, cts + self.shift)
+        self._update_live_hint(x, cts + self.shift)
+
+    def _update_live_hint(self, x, cents):
+        """Am I above or below the teacher's note right now?
+
+        Detailed: an arrow next to my line at once. Gentle: words under the chart,
+        only after I have stayed off by a lot for a while, and nothing on the chart.
+        """
+        self.live_hint = None
+        c = self.teacher_curve
+        if c is not None and x.size:
+            recent = cents[-25:]                 # about 0.15 s of pitch values
+            win = float(self.fb.get("live_window_seconds", 0.3))
+            m = (c.times >= x[-1] - win) & (c.times <= x[-1] + win)
+            if self.gentle:
+                tol = float((self.fb.get("gentle") or {}).get("live_tolerance_cents", 60))
+                self.live_hint = self.live_hold.update(live_direction(recent, c.cents[m], tol),
+                                                       time.monotonic())
+            else:
+                self.live_hint = live_direction(
+                    recent, c.cents[m], float(self.fb.get("live_tolerance_cents", 30)))
+        if self.live_hint is None or self.gentle:
+            self.arrow.setVisible(False)
+            return
+        symbol, color, _ = ARROWS[self.live_hint]
+        self.arrow.setText(symbol)
+        self.arrow.setColor(color)
+        self.arrow.setPos(x[-1], float(np.nanmedian(cents[-25:])))
+        self.arrow.setVisible(True)
 
     def _update_cursor(self, phase, sr):
         if phase != RESPOND:
@@ -366,16 +501,22 @@ class SongView(QtWidgets.QMainWindow):
         self.header.setText(
             f"{pos_s:6.1f} / {total_s:6.1f} s{intro}   tonic {self.teacher_tonic:.1f} Hz   key: {key}   "
             f"voice start: {'on' if self.voice_start else 'off'}   "
-            f"fold: {'on' if self.fold else 'off'}   saved: {self.saved_count}")
+            f"fold: {'on' if self.fold else 'off'}   drone: {'on' if self.drone_on else 'off'}   "
+            f"saved: {self.saved_count}")
         if phase == IDLE:
             txt, color = ("song finished, close whenever you like" if self.freeform.reached_end
-                          else "Space to begin"), "#aaaaaa"
+                          else "Space or Enter to begin"), "#aaaaaa"
         elif phase == PLAY:
             txt, color = "LISTEN", "#3498db"
         elif self._waiting_for_voice():
             txt, color = "SING WHEN READY", "#f1c40f"
         else:
             txt, color = "YOUR TURN", "#e74c3c"
+            if self.live_hint is not None:
+                symbol, _, words = ARROWS[self.live_hint]
+                if self.gentle:
+                    words = "a bit higher" if self.live_hint == HIGHER else "a bit lower"
+                txt += f"   {symbol} {words}"
         if self.shift:
             txt += f"   (curve shifted {self.shift:+.0f} cents)"
         self.state_label.setText(txt)

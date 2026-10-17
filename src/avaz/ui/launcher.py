@@ -21,7 +21,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ..config import (data_dir, load_settings, load_song_config, load_user_prefs,
                       save_song_config, save_user_prefs)
 from ..keys import key_choices, note_label
-from ..library import Song, discover_songs, import_recording, phrase_files, prepare_song
+from ..library import (Song, discover_songs, import_recording, name_tonic, phrase_files,
+                       prepare_song)
 from ..scales import load_scales
 
 DEFAULT_DEVICE = "System default"
@@ -183,6 +184,17 @@ class Launcher(QtWidgets.QMainWindow):
             lambda: self._save_prefs(scale=self.scale_combo.currentData()))
         form.addRow("Scale", self.scale_combo)
 
+        # How strict the tips after each try are. A choice of the person, not the song.
+        self.tips_combo = QtWidgets.QComboBox()
+        self.tips_combo.addItem("Gentle: long notes, one tip at a time", "gentle")
+        self.tips_combo.addItem("Detailed: every note, all tips, arrows", "detailed")
+        level = self.prefs.get("feedback_level",
+                               (self.settings.get("feedback") or {}).get("level", "gentle"))
+        self.tips_combo.setCurrentIndex(max(self.tips_combo.findData(level), 0))
+        self.tips_combo.currentIndexChanged.connect(
+            lambda: self._save_prefs(feedback_level=self.tips_combo.currentData()))
+        form.addRow("Tips", self.tips_combo)
+
         mode_row = QtWidgets.QHBoxLayout()
         self.song_mode = QtWidgets.QRadioButton("Whole song (pause anywhere)")
         self.phrase_mode = QtWidgets.QRadioButton("Saved phrases")
@@ -269,19 +281,27 @@ class Launcher(QtWidgets.QMainWindow):
         return float(hz) if hz else None
 
     def _teacher_tonic_of(self, song: Song) -> float | None:
-        """song.yaml first, then the tonic stored in the pitch curve file."""
+        """song.yaml first, then the key in the file name, then the pitch curve's own guess.
+        The same order as practice uses (library.prepare_song)."""
+        return self._teacher_tonic_and_source(song)[0]
+
+    def _teacher_tonic_and_source(self, song: Song) -> tuple[float | None, str]:
         hz = song.config.get("teacher_tonic_hz")
         if hz:
-            return float(hz)
-        if song.analyzed:
-            try:
-                import json
-                with open(song.curve_path, "r", encoding="utf-8") as fh:
-                    # Only the header is needed, but the file is plain JSON: read it all.
-                    return float(json.load(fh)["tonic_hz"])
-            except (OSError, ValueError, KeyError):
-                return None
-        return None
+            return float(hz), ""
+        if not song.analyzed:
+            return None, ""
+        try:
+            import json
+            with open(song.curve_path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            from_name = name_tonic(song.original.name,
+                                   [v for v in data["f0_hz"] if v is not None])
+            if from_name:
+                return from_name, "from the file name"
+            return float(data["tonic_hz"]), "guessed from the recording, please check"
+        except (OSError, ValueError, KeyError):
+            return None, ""
 
     # ------------------------------------------------------------------ form
     def _on_song_selected(self, row: int):
@@ -308,9 +328,12 @@ class Launcher(QtWidgets.QMainWindow):
         self.separate_btn.setVisible(song.vocals is None)
         self.analyze_btn.setVisible(not song.analyzed)
 
-        teacher = self._teacher_tonic_of(song)
+        teacher, source = self._teacher_tonic_and_source(song)
         self.teacher_spin.setValue(teacher or 0.0)
-        self.teacher_note.setText(note_label(teacher) if teacher else "unknown until analyzed")
+        if teacher:
+            self.teacher_note.setText(note_label(teacher) + (f"  ({source})" if source else ""))
+        else:
+            self.teacher_note.setText("unknown until analyzed")
 
         self.reference_combo.clear()
         for other in self.songs:
@@ -493,9 +516,15 @@ class Launcher(QtWidgets.QMainWindow):
 
         def done(curve):
             self.refresh(select=song.name)
-            self.statusBar().showMessage(
-                f"analyzed. The tonic guess is {note_label(curve.tonic_hz)}: check it, or use "
-                f"Measure if you have this song in another key")
+            from_name = name_tonic(song.original.name, curve.f0_hz)
+            if from_name:
+                self.statusBar().showMessage(
+                    f"analyzed. The key {note_label(from_name, show_cents=False)} is taken from "
+                    f"the file name")
+            else:
+                self.statusBar().showMessage(
+                    f"analyzed. The file name has no key, so the tonic is a guess: "
+                    f"{note_label(curve.tonic_hz)}. Use Measure if you have this song in another key")
 
         self._run(f"analyzing the pitch of {song.name} (about a minute) ...", work, done)
 
@@ -537,7 +566,9 @@ class Launcher(QtWidgets.QMainWindow):
             return
         from ..audio_io import resolve_device
         from ..practice import PracticeEngine
-        settings = self.settings
+        settings = dict(self.settings)
+        settings["feedback"] = {**(self.settings.get("feedback") or {}),
+                                "level": self.tips_combo.currentData()}
         audio = settings.get("audio", {})
         sr = int(audio.get("sample_rate", 44100))
         block = int(audio.get("hop_length", 256))

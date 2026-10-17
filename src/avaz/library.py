@@ -143,21 +143,40 @@ class SongSetup:
     start_seconds: float          # intro cut
 
 
+def name_tonic(name: str, f0_hz) -> float | None:
+    """The teacher's tonic from the key in the recording's name ("... دشتی می بمل"),
+    placed in the octave where this recording's voice sits. None without a key."""
+    import numpy as np
+    from .keys import tonic_from_name
+    f0 = np.asarray(f0_hz, dtype=float)
+    f0 = f0[np.isfinite(f0) & (f0 > 0)]
+    return tonic_from_name(name, float(np.median(f0))) if f0.size else None
+
+
 def prepare_song(src: Path, out_dir: Path, settings: dict, sample_rate: int,
                  my_tonic: float | None = None, teacher_tonic=None, log=print) -> SongSetup:
-    """Resolve the tonics from song.yaml, load (or make) the pitch curve and the audio.
+    """Resolve the tonics, load (or make) the pitch curve and the audio.
 
-    ``teacher_tonic`` may be a number or "auto"/"final" to override song.yaml.
+    The teacher's tonic comes from song.yaml, else from the key in the file name,
+    else from the recording itself. ``teacher_tonic`` may be a number or
+    "auto"/"final" to override all of that.
     """
     from .audio_io import load_audio
     from .config import load_song_config, resolve_tonics
     from .pitch_offline import load_or_analyze
 
     song_cfg = load_song_config(out_dir)
-    teacher, mine, same_key = resolve_tonics(song_cfg, settings, my_tonic=my_tonic)
-    if teacher_tonic is not None:
-        teacher = teacher_tonic
-    curve = load_or_analyze(Path(src), settings, teacher if teacher else "auto", log=log)
+    estimate = teacher_tonic if isinstance(teacher_tonic, str) else "auto"
+    curve = load_or_analyze(Path(src), settings, estimate, log=log)
+    if isinstance(teacher_tonic, str):
+        teacher, mine, same_key = resolve_tonics(song_cfg, settings, my_tonic=my_tonic,
+                                                 teacher_tonic=curve.tonic_hz)
+    else:
+        teacher, mine, same_key = resolve_tonics(
+            song_cfg, settings, my_tonic=my_tonic, teacher_tonic=teacher_tonic,
+            name_tonic=name_tonic(Path(src).name, curve.f0_hz))
+    if teacher and abs(float(teacher) - curve.tonic_hz) > 1e-6:
+        curve = curve.with_tonic(float(teacher))
     if same_key or not mine:
         mine = curve.tonic_hz
     y, _ = load_audio(src, sr=sample_rate)

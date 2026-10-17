@@ -141,6 +141,44 @@ class Session:
         self.phase, self.pos = IDLE, 0
 
 
+def make_drone(tonic_hz: float, sample_rate: int, seconds: float = 2.0) -> np.ndarray:
+    """A soft steady tone on the tonic that loops without a click.
+
+    The tonic with its octave and a quieter twelfth (the fifth an octave up), like a
+    tanpura or a held note on a setar. Singing against it trains the ear to hear
+    whether a note is above or below where it should be. The length holds a whole
+    number of cycles, so playing it on repeat has no seam. Peak is 1.0.
+    """
+    cycles = max(1, int(round(float(tonic_hz) * seconds)))
+    n = int(round(cycles * sample_rate / float(tonic_hz)))
+    phase = 2 * np.pi * cycles * np.arange(n) / n      # exactly ``cycles`` turns over n samples
+    y = np.sin(phase) + 0.5 * np.sin(2 * phase) + 0.25 * np.sin(3 * phase)
+    return (y / np.abs(y).max()).astype(np.float32)
+
+
+class DroneMixer:
+    """Adds a looping drone to the output blocks, with its own position.
+
+    Kept out of :class:`PracticeEngine` so it can be tested without a sound card.
+    ``during_play`` False keeps the drone quiet while the teacher plays, for when
+    the teacher sings in another key than mine and the drone would clash.
+    """
+
+    def __init__(self, buffer: np.ndarray, gain: float, during_play: bool = True):
+        self.buffer = np.asarray(buffer, dtype=np.float32)
+        self.gain = float(gain)
+        self.during_play = bool(during_play)
+        self.pos = 0
+
+    def mix(self, out: np.ndarray, phase: str) -> None:
+        """Add the next ``out.size`` drone samples into ``out`` (in place)."""
+        n = out.shape[0]
+        idx = (self.pos + np.arange(n)) % self.buffer.size
+        self.pos = int((self.pos + n) % self.buffer.size)
+        if phase != PLAY or self.during_play:
+            out += self.buffer[idx] * self.gain
+
+
 class PracticeEngine:
     """Full duplex stream: plays ``play_buffer`` during PLAY, records mic during PLAY/RESPOND.
 
@@ -160,6 +198,7 @@ class PracticeEngine:
         self.session = Session(0, 0)
         self.play_buffer = np.zeros(0, dtype=np.float32)
         self.gain = float(monitor_gain)
+        self.drone: DroneMixer | None = None
         self._lock = threading.Lock()
         self._stream = sd.Stream(samplerate=self.sample_rate, blocksize=self.block_size,
                                  channels=(1, 1), dtype="float32",
@@ -180,6 +219,8 @@ class PracticeEngine:
                 outdata[:, 0] = chunk * self.gain
             else:
                 outdata.fill(0)
+            if self.drone is not None:
+                self.drone.mix(outdata[:, 0], phase)
             if phase in (PLAY, WAIT, RESPOND):
                 self.captured.put_tagged(phase, pos, indata[:, 0])
             s.advance(frames)
@@ -209,6 +250,11 @@ class PracticeEngine:
     def toggle(self) -> None:
         with self._lock:
             self.session.toggle()
+
+    def set_drone(self, drone: "DroneMixer | None") -> None:
+        """Start (or with None stop) a drone under everything else that plays."""
+        with self._lock:
+            self.drone = drone
 
     def repeat_segment(self) -> None:
         with self._lock:

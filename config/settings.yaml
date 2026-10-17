@@ -53,6 +53,7 @@ practice:
   onset_voiced_frames: 6        # consecutive pitched frames needed to trigger (6 x 5.8 ms)
   onset_preroll_seconds: 0.15   # audio kept from just before the trigger
   wait_timeout_seconds: 15      # give up waiting for my voice after this long
+  drone_gain: 0.12              # loudness of the drone (T in song mode), 0 to 1
 
 display:
   style: notes              # "notes": a lane per scale note that lights up while a voice
@@ -61,6 +62,26 @@ display:
 
 scoring:
   tolerance_cents: 25       # a frame within this deviation counts as "in tune"
+
+feedback:                   # the plain-words tips after each attempt, and the live arrow
+  level: gentle             # gentle: long notes only, one tip, marks only what is far off.
+                            # detailed: every frame, up to three spots, arrows. The main
+                            # window (avaz gui) can switch it per person
+  gentle:
+    hit_cents: 50           # a long note this close to the teacher's counts as hit
+    very_off_cents: 100     # only notes this far off are shaded on the chart
+    overall_cents: 35       # most notes off one way by this: "aim a bit higher overall"
+    min_note_seconds: 0.25  # teacher notes held at least this long are judged
+    max_marks: 2            # at most this many shaded notes per try
+    live_tolerance_cents: 60  # "a bit higher" only when this far off ...
+    live_hold_seconds: 0.5    # ... for at least this long
+  # the rest is for the detailed level
+  key_offset_cents: 30      # whole attempt this far off: "overall too low, sing higher"
+  fast_ratio: 0.85          # my singing time below this share of the teacher's: "too fast"
+  slow_ratio: 1.2           # above this share: "too slow"
+  max_spots: 3              # at most this many problem spots per attempt
+  live_tolerance_cents: 30  # live arrow shows a tick when this close to the teacher's note
+  live_window_seconds: 0.3  # teacher notes this far before or after "now" count for the arrow
 
 colors:
   teacher: "#1f77b4"
