@@ -35,6 +35,18 @@ def _rgba(color: str, alpha: int) -> QtGui.QColor:
     return c
 
 
+def _blend(color: str, alpha: int, over: str = LANE_COLORS[0]) -> QtGui.QColor:
+    """``color`` at ``alpha`` mixed onto the lane background, as one opaque color.
+
+    The pitch lines must stay opaque: pyqtgraph draws a see-through line as one
+    huge path, and Qt 6.11 crashes now and then painting a whole song that way.
+    """
+    a = alpha / 255
+    top, bottom = QtGui.QColor(color), QtGui.QColor(over)
+    return QtGui.QColor(*(round(a * t + (1 - a) * b) for t, b in
+                          zip(top.getRgb()[:3], bottom.getRgb()[:3])))
+
+
 class NoteDisplay:
     def __init__(self, plot: pg.PlotWidget, scale: Scale | None, colors: dict,
                  name_tonic_hz: float | None, notes: bool = True, tolerance: float = 25.0):
@@ -60,6 +72,9 @@ class NoteDisplay:
             plot.addItem(item)
         self.teacher_line = plot.plot([], [], connect="finite")
         self.my_line = plot.plot([], [], connect="finite")
+        for line in (self.teacher_line, self.my_line):
+            # Short segments instead of one path for the whole song (see _blend).
+            line.curve.setSegmentedLineMode("on")
         self._style_lines()
 
     # ---------------------------------------------------------------- setup
@@ -144,8 +159,8 @@ class NoteDisplay:
         teacher = self.colors.get("teacher", "#1f77b4")
         mine = self.colors.get("mine", "#d62728")
         if self.notes:
-            self.teacher_line.setPen(pg.mkPen(_rgba("#85b7eb", 170), width=1))
-            self.my_line.setPen(pg.mkPen(_rgba("#ffffff", 220), width=1.3))
+            self.teacher_line.setPen(pg.mkPen(_blend("#85b7eb", 170), width=1))
+            self.my_line.setPen(pg.mkPen(_blend("#ffffff", 220), width=1.3))
         else:
             self.teacher_line.setPen(pg.mkPen(teacher, width=1.3))
             self.my_line.setPen(pg.mkPen(mine, width=2))
