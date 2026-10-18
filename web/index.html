@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#14171c">
+  <meta name="description" content="Live pitch practice for Persian classical singing (avaz)">
+  <title>Avaz Trainer</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <main class="app">
+    <header class="bar">
+      <button id="keyChip" class="chip" aria-label="Key and dastgah settings">
+        <span id="keyName">Re</span><span class="dot">·</span><span id="scaleName">Dashti</span>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>
+      </button>
+      <div class="bar-actions">
+        <button id="droneBtn" class="icon-btn" aria-pressed="false" aria-label="Drone on the tonic">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h2l3-7 4 14 3-7h4"/></svg>
+        </button>
+        <button id="viewBtn" class="icon-btn" aria-label="Switch between notes and curve">
+          <svg class="ico" id="viewIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h7M13 12h7M6 17h8"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="readout" aria-live="polite">
+      <div id="noteName" class="note-name idle">Ready</div>
+      <div class="meter" aria-hidden="true">
+        <div class="meter-track">
+          <div class="meter-zone"></div>
+          <div class="meter-mid"></div>
+          <div id="meterDot" class="meter-dot"></div>
+        </div>
+        <div class="meter-ends"><span>low</span><span>high</span></div>
+      </div>
+      <div id="words" class="words">Tap the mic and sing</div>
+      <div id="detail" class="detail" hidden></div>
+    </section>
+
+    <section class="chart-wrap">
+      <canvas id="chart" aria-label="Your pitch over the last seconds"></canvas>
+      <div id="hint" class="hint" hidden></div>
+    </section>
+
+    <footer class="dock">
+      <button id="micBtn" class="mic" aria-label="Start listening">
+        <span id="micLevel" class="mic-level"></span>
+        <svg class="ico mic-ico" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+        </svg>
+      </button>
+      <div id="micLabel" class="mic-label">Tap to sing</div>
+    </footer>
+  </main>
+
+  <dialog id="settings" class="sheet">
+    <form method="dialog" class="sheet-body">
+      <div class="sheet-grip" aria-hidden="true"></div>
+      <h2>Your key</h2>
+      <p id="keyIntro" class="help">The note your teacher told you to sing this song in.</p>
+      <div id="keyGrid" class="key-grid" role="radiogroup" aria-label="Key"></div>
+      <div class="row">
+        <span class="label">Octave</span>
+        <div id="octaves" class="seg" role="radiogroup" aria-label="Octave"></div>
+      </div>
+      <div class="row">
+        <span class="label">Fine tune</span>
+        <input id="fine" type="range" min="-50" max="50" step="1" aria-label="Fine tune in cents">
+      </div>
+      <p id="keyHz" class="help"></p>
+
+      <h2>Dastgah</h2>
+      <div id="scales" class="seg wrap" role="radiogroup" aria-label="Dastgah"></div>
+
+      <h2>Feedback</h2>
+      <div id="levels" class="seg" role="radiogroup" aria-label="Feedback level"></div>
+
+      <details>
+        <summary>More settings</summary>
+        <div class="row">
+          <span class="label">Smoothing</span>
+          <div id="smoothing" class="seg" role="radiogroup" aria-label="Smoothing"></div>
+        </div>
+        <div class="row">
+          <span class="label">Seconds shown</span>
+          <div id="history" class="seg" role="radiogroup" aria-label="Seconds shown"></div>
+        </div>
+        <div class="row">
+          <span class="label">Mic gate</span>
+          <input id="gate" type="range" min="-75" max="-35" step="1" aria-label="Mic gate in dB">
+        </div>
+        <p id="gateHelp" class="help"></p>
+      </details>
+
+      <button class="done" value="done">Done</button>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

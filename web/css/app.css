@@ -1,0 +1,268 @@
+/* Avaz Trainer, phone first. Dark, calm, big touch targets. */
+
+:root {
+  --bg: #14171c;
+  --surface: #1c2027;
+  --surface-2: #252a33;
+  --border: #2e343e;
+  --text: #f1f3f5;
+  --text-dim: #8d96a3;
+  --accent: #5fb3a1;
+  --accent-ink: #0d1f1b;
+  --in-tune: #3ccf8e;
+  --off-tune: #f0a43a;
+  --voice: #f4f6f8;
+  --tonic: #5fb3a1;
+  --guide: #4a525e;
+  --chart-bg: #171a20;
+  --lane-a: #1b1f26;
+  --lane-b: #20252d;
+  --lane-tonic: #1d2c29;
+  --lane-now: #2a303a;
+  --danger: #ef6b6b;
+  --radius: 16px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+button { font: inherit; color: inherit; cursor: pointer; }
+
+.ico {
+  width: 24px; height: 24px;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* ---------- layout: portrait first ---------- */
+
+.app {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  grid-template-areas: "bar" "readout" "chart" "dock";
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+}
+
+.bar {
+  grid-area: bar;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px;
+}
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 48px; padding: 0 12px 0 16px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+  font-size: 17px; font-weight: 600;
+}
+.chip .dot { color: var(--text-dim); }
+.chip .ico { width: 20px; height: 20px; color: var(--text-dim); }
+
+.bar-actions { display: flex; gap: 8px; }
+
+.icon-btn {
+  width: 48px; height: 48px;
+  display: grid; place-items: center;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 50%;
+  color: var(--text-dim);
+}
+.icon-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* ---------- readout ---------- */
+
+.readout {
+  grid-area: readout;
+  padding: 4px 20px 14px;
+  text-align: center;
+}
+
+.note-name {
+  font-size: clamp(44px, 13vw, 64px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  transition: color .2s, opacity .3s;
+}
+.note-name.idle { color: var(--text-dim); font-size: clamp(32px, 9vw, 44px); }
+.note-name.faded { opacity: .35; }
+
+.meter { margin: 10px auto 0; max-width: 340px; }
+.meter-track {
+  position: relative; height: 14px;
+  background: var(--surface-2); border-radius: 999px;
+}
+.meter-zone {
+  position: absolute; top: 0; bottom: 0; left: 40%; width: 20%;
+  background: color-mix(in srgb, var(--in-tune) 22%, transparent); border-radius: 999px;
+}
+.meter-mid {
+  position: absolute; top: -4px; bottom: -4px; left: 50%; width: 2px; margin-left: -1px;
+  background: var(--text-dim); border-radius: 1px;
+}
+.meter-dot {
+  position: absolute; top: 50%; left: 50%;
+  width: 22px; height: 22px; margin: -11px 0 0 -11px;
+  background: var(--text-dim); border-radius: 50%;
+  opacity: 0;
+  transition: left .12s linear, background-color .2s, opacity .3s;
+}
+.meter-dot.on { opacity: 1; }
+.meter-ends {
+  display: flex; justify-content: space-between;
+  font-size: 12px; color: var(--text-dim); margin-top: 4px; padding: 0 2px;
+}
+
+.words {
+  margin-top: 6px;
+  font-size: 20px; font-weight: 600;
+  min-height: 1.4em;
+  color: var(--text-dim);
+  transition: color .2s;
+}
+.state-in .words, .state-in .note-name { color: var(--in-tune); }
+.state-low .words, .state-high .words { color: var(--off-tune); }
+.state-in .meter-dot { background: var(--in-tune); }
+.state-low .meter-dot, .state-high .meter-dot { background: var(--off-tune); }
+
+.detail { margin-top: 2px; font-size: 14px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+/* ---------- chart ---------- */
+
+.chart-wrap {
+  grid-area: chart;
+  position: relative;
+  min-height: 0;
+  margin: 0 12px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+#chart { display: block; width: 100%; height: 100%; touch-action: none; }
+
+.hint {
+  position: absolute; inset: auto 12px 12px 12px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+  border-radius: 12px;
+  font-size: 14px; color: var(--text-dim); text-align: center;
+}
+
+/* ---------- dock ---------- */
+
+.dock {
+  grid-area: dock;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 14px 0 10px;
+}
+
+.mic {
+  position: relative;
+  width: 84px; height: 84px;
+  display: grid; place-items: center;
+  border: none; border-radius: 50%;
+  background: var(--accent); color: var(--accent-ink);
+  box-shadow: 0 6px 20px rgb(0 0 0 / .35);
+}
+.mic .mic-ico { width: 34px; height: 34px; position: relative; }
+.mic.on { background: var(--danger); color: #2b0b0b; }
+.mic.on .mic-ico { stroke-width: 2.4; }
+.mic-level {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 calc(var(--level, 0) * 14px) color-mix(in srgb, var(--danger) 30%, transparent);
+  transition: box-shadow .08s linear;
+}
+.mic-label { margin-top: 8px; font-size: 14px; color: var(--text-dim); }
+
+/* ---------- landscape: phone on a stand ---------- */
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .app {
+    grid-template-columns: minmax(230px, 32%) 1fr;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas: "bar chart" "readout chart" "dock chart";
+    padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  }
+  .chart-wrap { margin: 10px 10px 10px 0; }
+  .readout { align-self: center; padding: 0 14px; min-width: 0; }
+  .note-name { font-size: 34px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .note-name.idle { font-size: 28px; }
+  .words { font-size: 17px; }
+  .dock { padding: 6px 0 10px; }
+  .mic { width: 60px; height: 60px; }
+  .mic .mic-ico { width: 28px; height: 28px; }
+  .bar { padding: 8px 10px; }
+  .chip { min-height: 44px; font-size: 16px; padding: 0 8px 0 12px; }
+  .icon-btn { width: 44px; height: 44px; }
+  .mic-label { display: none; }
+}
+
+/* ---------- settings sheet ---------- */
+
+.sheet {
+  width: 100%; max-width: 560px;
+  max-height: 88dvh;
+  margin: auto auto 0;
+  padding: 0;
+  background: var(--surface); color: var(--text);
+  border: none; border-radius: 22px 22px 0 0;
+}
+.sheet::backdrop { background: rgb(0 0 0 / .55); }
+.sheet[open] { animation: rise .22s ease-out; }
+@keyframes rise { from { transform: translateY(40px); opacity: 0; } }
+
+.sheet-body { padding: 8px 18px calc(18px + env(safe-area-inset-bottom)); }
+.sheet-grip { width: 40px; height: 5px; margin: 4px auto 6px; background: var(--border); border-radius: 3px; }
+.sheet h2 { font-size: 15px; font-weight: 600; color: var(--text-dim); margin: 18px 0 8px; text-transform: uppercase; letter-spacing: .06em; }
+.help { font-size: 14px; color: var(--text-dim); margin: 6px 0; }
+.help.attention { color: var(--off-tune); }
+
+.key-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+
+.opt {
+  min-height: 48px; padding: 6px 10px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
+  font-size: 15px; line-height: 1.15;
+}
+.opt small { display: block; font-size: 12px; color: var(--text-dim); }
+.opt[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.opt[aria-checked="true"] small { color: var(--accent-ink); }
+
+.seg { display: flex; gap: 8px; }
+.seg .opt { flex: 1; }
+.seg.wrap { flex-wrap: wrap; }
+.seg.wrap .opt { flex: 1 0 30%; }
+
+.row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.row .label { flex: 0 0 104px; font-size: 15px; }
+.row .seg, .row input { flex: 1; }
+input[type="range"] { accent-color: var(--accent); height: 32px; }
+
+details { margin-top: 18px; }
+summary { min-height: 44px; display: flex; align-items: center; color: var(--text-dim); font-size: 15px; }
+
+.done {
+  width: 100%; min-height: 52px; margin-top: 20px;
+  background: var(--accent); color: var(--accent-ink);
+  border: none; border-radius: 14px;
+  font-size: 17px; font-weight: 700;
+}
+
+.toast {
+  position: fixed; left: 16px; right: 16px; bottom: calc(130px + env(safe-area-inset-bottom));
+  padding: 14px 16px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px;
+  font-size: 15px; text-align: center;
+  box-shadow: 0 8px 24px rgb(0 0 0 / .4);
+}

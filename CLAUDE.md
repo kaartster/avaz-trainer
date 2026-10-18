@@ -1,6 +1,6 @@
 # Avaz Trainer
 
-A personal practice tool for Persian classical singing (avaz). It listens to my voice, shows my pitch live in cents relative to my tonic, and compares it with pitch curves extracted from my teacher's training recordings. It starts as a laptop app in Python and may later move to a small open hardware device (Raspberry Pi).
+A personal practice tool for Persian classical singing (avaz). It listens to my voice, shows my pitch live in cents relative to my tonic, and compares it with pitch curves extracted from my teacher's training recordings. It started as a laptop app in Python. Because I usually practice on my Android phone, the practice side now also gets a phone version: a web app (PWA) in `web/` that runs in Chrome on the phone, while the laptop keeps doing the heavy offline analysis. A small open hardware device (Raspberry Pi) is still a possible later step.
 
 ## About me and how to work with me
 
@@ -24,7 +24,8 @@ A personal practice tool for Persian classical singing (avaz). It listens to my 
 
 - Automatic dastgah or gusheh recognition.
 - Western note names as the main display. Western names may appear as a secondary label only.
-- Mobile apps.
+- Native mobile apps (Kotlin, Flutter, app stores). The phone version is a web app.
+- Offline analysis on the phone (pyin, Demucs, slicing). That stays on the laptop.
 
 ## Domain notes (important)
 
@@ -57,6 +58,26 @@ These are placeholders to replace after calibration against my teacher's recordi
 - `pytest` for tests
 - Use a virtual environment and `pyproject.toml`. The code must run on Windows and Linux.
 
+### Phone web app (`web/`)
+
+- Plain HTML, CSS and JavaScript ES modules. No build step and no npm, so it can be served as static files (locally with `avaz web`, or from GitHub Pages).
+- A Progressive Web App: installable from Chrome ("Add to Home screen"), works offline through a service worker, keeps the screen awake while listening.
+- Microphone through `getUserMedia` with echo cancellation, noise suppression and auto gain turned off (they distort pitch), and an `AudioWorklet` that hands audio blocks to the main thread.
+- Live pitch: a JavaScript port of the numpy YIN in `pitch_live.py`, same parameters.
+- Pure logic lives in modules without DOM or audio access (`cents.js`, `yin.js`, `scales.js`, `notes.js`, `stream.js`, `feedback.js`) and is tested in `web/tests.html`, which runs in any browser. Keep their behavior identical to the Python modules of the same name.
+- Scale positions come from `config/scales.yaml`, exported to `web/scales.json` by `avaz web`. A pytest checks the two stay in sync.
+- Per-user choices (key, dastgah, feedback level) are stored in the browser (`localStorage`), so each classmate keeps their own.
+
+### Phone UI/UX principles
+
+The phone is not a small laptop screen. Design for one hand, portrait first, and a singer who is not looking closely:
+
+- One big answer at a time: the note I'm on (solfege name, with koron and sori) and plain words ("in tune", "a bit low, go up"). Cents only in the detailed level.
+- Calm screen: note lanes by default, the detailed curve as an option. The view follows my voice vertically, so no zooming or scrolling by hand.
+- Big touch targets (at least 48 px), the main button at the bottom within thumb reach, settings in a bottom sheet.
+- Dark theme by default (practice often happens in the evening), readable from arm's length.
+- Works in landscape too (phone on a stand): readout on the left, chart on the right.
+
 ## Audio parameters (starting values, keep in config)
 
 - Sample rate: 44100 Hz (or 48000 if that's the device default)
@@ -87,6 +108,11 @@ avaz-trainer/
       live_view.py       # scrolling live pitch chart with guide lines
       practice_view.py   # reference + live curves, record attempt
     cli.py               # command-line entry points
+  web/                   # phone web app (PWA), static files
+    index.html
+    tests.html           # browser test runner for the pure JS logic
+    scales.json          # exported from config/scales.yaml
+    js/                  # cents, yin, scales, notes, stream, feedback, audio, chart, app
   data/                  # gitignored
     teacher/             # original recordings from my teacher
     phrases/             # sliced phrases (audio + pitch curve)
@@ -144,6 +170,20 @@ Each milestone ends with something I can run.
 - Show an overlay of both aligned curves with the problem areas highlighted.
 - Keep a simple history per phrase so I can see progress over days.
 - **Done when**: the score clearly improves when I sing a phrase better, and the highlighted sections match what my ear tells me.
+
+### P1: Phone live view
+- `avaz web` exports the scales and serves `web/` on the laptop. The phone opens it in Chrome (or it is published on GitHub Pages).
+- Pick my key by solfege name and the dastgah in a settings sheet, then tap the mic button: scrolling note lanes with my voice, the current note name, and plain words for in tune, low or high. Optional drone on the tonic. A demo mode (`?demo`) feeds a synthetic voice for testing without a mic.
+- **Done when**: on my phone the curve follows my voice with no visible delay, sustained notes are stable, and the note name matches what my teacher calls it.
+
+### P2: Phone practice mode
+- `avaz export-phone <song>` bundles a song's phrases (audio, pitch curves, tonic, scale positions) into one pack the phone can load.
+- Play, loop and slow down a phrase (pitch preserved), see the teacher's lanes with mine on top, record attempts on the phone. A latency offset setting for Bluetooth headphones.
+- **Done when**: I can practice a lesson on the phone without the laptop.
+
+### P3: Phone scoring and history
+- Port the numpy DTW scoring and the gentle feedback to JavaScript, tested against the same cases as the Python version. Keep progress per phrase on the phone, with a way to copy attempts back to the laptop.
+- **Done when**: the phone gives the same score and tips as the laptop for the same attempt.
 
 ### M6 (later): Hardware
 - Run the app on a Raspberry Pi 4/5 or Zero 2 W with a USB or I2S (INMP441) mic, a small screen, and headphones.

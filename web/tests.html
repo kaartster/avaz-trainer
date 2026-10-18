@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Avaz tests</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; margin: 16px; background: #14171c; color: #f1f3f5; }
+    .pass { color: #3ccf8e; }
+    .fail { color: #ef6b6b; }
+    li.pass::before { content: "ok  "; }
+    li.fail::before { content: "FAIL  "; font-weight: 700; }
+    ul { list-style: none; padding: 0; }
+  </style>
+</head>
+<body>
+  <h1>Avaz Trainer: logic tests</h1>
+  <p id="summary">running...</p>
+  <ul id="results"></ul>
+  <script type="module" src="js/tests.js"></script>
+</body>
+</html>

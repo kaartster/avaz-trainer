@@ -464,6 +464,30 @@ def cmd_history(args) -> int:
     return 0
 
 
+def cmd_web(args) -> int:
+    """Export the scales for the phone app and serve web/ on this computer."""
+    from .web import export_scales, lan_address, serve
+
+    out = export_scales()
+    print(f"scales written to {out}")
+    if args.export_only:
+        return 0
+    host = "0.0.0.0" if args.lan else "127.0.0.1"
+    print(f"phone app at http://localhost:{args.port}  (demo voice: http://localhost:{args.port}/?demo)")
+    print(f"tests at    http://localhost:{args.port}/tests.html")
+    if args.lan:
+        ip = lan_address()
+        print(f"on the network: http://{ip or '<this computer>'}:{args.port}")
+        print("  Chrome on the phone only allows the microphone over https or localhost,")
+        print("  so over the network the page opens but the mic stays off (demo still works).")
+    print("Ctrl+C to stop")
+    try:
+        serve(port=args.port, host=host)
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="avaz", description="Persian classical singing trainer")
     p.add_argument("--version", action="version", version=f"avaz {__version__}")
@@ -473,6 +497,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--screenshot", default=None, help=argparse.SUPPRESS)
     s.add_argument("--quit-after", type=float, default=None, help=argparse.SUPPRESS)
     s.set_defaults(func=cmd_gui)
+
+    s = sub.add_parser("web", help="serve the phone web app (web/) and export its scales")
+    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--lan", action="store_true", help="also reachable from other devices on the network")
+    s.add_argument("--export-only", action="store_true", help="only write web/scales.json")
+    s.set_defaults(func=cmd_web)
 
     s = sub.add_parser("devices", help="list audio input and output devices")
     s.set_defaults(func=cmd_devices)

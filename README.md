@@ -270,6 +270,44 @@ The attempt is measured against the tonic stored in its meta file (the one the
 practice session used). Pass `--my-tonic <hz>` to rescore against another tonic,
 for example after changing `tonic.mine_hz` in settings.
 
+## Phone app (live view)
+
+`web/` is a version of the live view for Android phones: a web app that runs in
+Chrome and can be added to the home screen. Pick your key and dastgah in the
+sheet that opens on first use, tap the mic and sing. The screen shows the note
+you are on (Re, Mi koron, Fa sori ...), plain words (in tune, a bit low, go up)
+and your voice lighting up the note lanes. The view follows your voice up and
+down by itself. The top right buttons switch on a drone on your tonic (use
+headphones, or the mic hears it) and switch between note lanes and the detailed
+curve. "Detailed" feedback in the settings adds cents and Hz.
+
+On the laptop:
+
+```bash
+avaz web
+```
+
+Then open http://localhost:8765 (add `?demo` for a synthetic singer, no mic
+needed) and http://localhost:8765/tests.html for the logic tests.
+
+On the phone, Chrome only allows the microphone on https pages or on
+localhost. Two ways:
+
+- **GitHub Pages** (for daily use): on github.com, Settings > Pages > Source:
+  "GitHub Actions". Every push to main that changes `web/` publishes the app at
+  `https://<user>.github.io/avaz-trainer/`. Open it in Chrome on the phone and
+  choose "Add to Home screen". After the first visit it also works offline.
+- **USB cable** (for trying changes): enable USB debugging on the phone, plug
+  it in, open `chrome://inspect/#devices` in Chrome on the laptop, turn on "Port
+  forwarding" for `8765` to `localhost:8765`, and open http://localhost:8765 in
+  Chrome on the phone while `avaz web` runs.
+
+`avaz web --lan` makes the page reachable over Wi-Fi too, but there the mic
+stays off (no https), so only the demo works.
+
+After editing `config/scales.yaml`, run `avaz web --export-only` (or just
+`avaz web`) so the phone gets the same scale positions; a test checks this.
+
 ## Other commands
 
 ```bash
@@ -286,3 +324,6 @@ command with `--tonic <hz>`, `--tonic auto` (strongest histogram peak) or
 ```bash
 pytest
 ```
+
+The phone app's logic (YIN, cents, scales, note names) is tested in the browser:
+run `avaz web` and open http://localhost:8765/tests.html.
