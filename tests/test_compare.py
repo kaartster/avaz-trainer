@@ -239,3 +239,33 @@ def test_tonic_from_reference_finds_the_new_key():
     assert tonic_from_reference(lower, reference) == pytest.approx(185.0 * 2 ** (-180 / 1200), rel=0.004)
     empty = make_curve(t, np.full(t.size, np.nan))
     assert np.isnan(tonic_from_reference(empty, reference))
+
+
+def test_dtw_align_matches_librosa_exactly():
+    """The numpy DTW replaced librosa's (slow to load); it must find the same paths."""
+    from librosa.sequence import dtw
+
+    def librosa_align(a, b, band=0.2):
+        cost = np.abs(a[:, None] - b[None, :])
+        n, m = cost.shape
+        rad = max(band, abs(n - m) / max(n, m) + 1.0 / max(n, m))
+        _, wp = dtw(C=cost, global_constraints=True, band_rad=float(rad), backtrack=True)
+        return np.asarray(wp[::-1], dtype=int)
+
+    rng = np.random.default_rng(1)
+    for _ in range(50):
+        n, m = rng.integers(2, 80, 2)
+        a = np.round(rng.normal(0, 200, n), -1)       # rounded to tens: many equal costs
+        b = np.round(rng.normal(0, 200, m), -1)
+        assert np.array_equal(dtw_align(a, b), librosa_align(a, b))
+
+
+def test_scoring_does_not_load_librosa():
+    import subprocess
+    import sys
+    code = ("import sys, numpy as np\n"
+            "from avaz.compare import dtw_align\n"
+            "dtw_align(np.arange(5.0), np.arange(7.0))\n"
+            "print('librosa' in sys.modules, 'numba' in sys.modules)")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.split() == ["False", "False"]

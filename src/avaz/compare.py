@@ -117,7 +117,6 @@ def dtw_align(a: np.ndarray, b: np.ndarray, band: float = 0.2) -> np.ndarray:
     of the longer sequence, so a phrase cannot be matched to a totally different
     part of the reference.
     """
-    from librosa.sequence import dtw
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
     if a.size == 0 or b.size == 0:
@@ -130,11 +129,54 @@ def dtw_align(a: np.ndarray, b: np.ndarray, band: float = 0.2) -> np.ndarray:
     # Plain steps with equal weights. Slope limits and pre-smoothing were tried on
     # real attempts and both aligned worse, because an attempt often misses whole
     # bits of the reference and the path must be free to park there.
-    try:
-        _, wp = dtw(C=cost, global_constraints=True, band_rad=float(rad), backtrack=True)
-    except Exception:
-        _, wp = dtw(C=cost, backtrack=True)
-    return np.asarray(wp[::-1], dtype=int)
+    path = _dtw_path(np.where(_band_mask(n, m, rad), cost, np.inf))
+    if path is None:                      # the band left no way through: drop it
+        path = _dtw_path(cost)
+    return path
+
+
+def _band_mask(n: int, m: int, radius: float) -> np.ndarray:
+    """Cells near the diagonal, the same band as ``librosa.util.fill_off_diagonal``."""
+    r = int(np.round(radius * min(n, m)))
+    offset = abs(n - m)
+    i = np.arange(n)[:, None]
+    j = np.arange(m)[None, :]
+    up, down = (r + offset, r) if n < m else (r, r + offset)
+    return (j - i < up) & (i - j < down)
+
+
+def _dtw_path(cost: np.ndarray) -> np.ndarray | None:
+    """Cheapest monotonic path from (0, 0) to the last cell, or None if there is none.
+
+    Steps (1, 1), (0, 1) and (1, 0) with equal weights, ties going to the
+    diagonal, then (0, 1): the same as ``librosa.sequence.dtw`` with its default
+    steps, which this replaces. librosa compiles its loop with numba the first
+    time it runs, and after switching the computer on, loading librosa, scipy and
+    numba took over 20 seconds, right when the first stretch was scored. Here
+    the loop runs over anti-diagonals instead (cells with the same i + j only
+    depend on the two diagonals before), so plain numpy is fast enough.
+    """
+    n, m = cost.shape
+    D = np.full((n + 1, m + 1), np.inf)      # padded by one row and column of inf
+    D[1, 1] = cost[0, 0]
+    step = np.zeros((n, m), dtype=np.int8)   # 0: from (i-1, j-1), 1: (i, j-1), 2: (i-1, j)
+    for s in range(1, n + m - 1):
+        i = np.arange(max(0, s - m + 1), min(n - 1, s) + 1)
+        j = s - i
+        cand = np.stack([D[i, j], D[i + 1, j], D[i, j + 1]])   # padded indices
+        k = np.argmin(cand, axis=0)                           # first minimum wins ties
+        D[i + 1, j + 1] = cand[k, np.arange(i.size)] + cost[i, j]
+        step[i, j] = k
+    if not np.isfinite(D[n, m]):
+        return None
+    moves = np.array([(1, 1), (0, 1), (1, 0)])
+    i, j = n - 1, m - 1
+    path = [(i, j)]
+    while (i, j) != (0, 0):
+        di, dj = moves[step[i, j]]
+        i, j = i - di, j - dj
+        path.append((i, j))
+    return np.array(path[::-1], dtype=int)
 
 
 def worst_sections(times, dev, tolerance: float, min_seconds: float = 0.2,
