@@ -7,7 +7,7 @@ import { Chart } from "./chart.js";
 import { DEMO, BLOCK, FRAME } from "./live.js";
 import { octaveShift } from "./offline.js";
 import { SOLFEGE, hzToNote, keyLabel, scaleNoteName } from "./notes.js";
-import { loadPlayer } from "./player.js";
+import { latencyReport, loadPlayer } from "./player.js";
 import { keyHz, scale, settings, tolerance } from "./settings.js";
 import { keyPicker, onSettingsChange, toggleView, viewIcon } from "./sheet.js";
 import { addAttempt, deleteSong, getSong, putSong } from "./store.js";
@@ -34,6 +34,9 @@ let center = 100;
 let lastFrame = 0;
 let active = false;
 let token = 0;                   // guards against a slow load finishing after leaving
+let lastDebug = 0;
+// ?debug shows the audio latency numbers under the title instead of the hint.
+const DEBUG = new URLSearchParams(location.search).has("debug");
 
 const teacherTonic = () => song.teacherTonicHz;
 const myTonic = () => (song.sameKey ? song.teacherTonicHz : keyHz(song.myKey));
@@ -61,8 +64,10 @@ export async function enter(id) {
   $("timeLen").textContent = clock(player.duration);
   center = 100;
   viewIcon($("songViewBtn"));
+  player.sync = settings.sync / 1000;
   update();
-  requestAnimationFrame(frame);
+  const loop = token;
+  requestAnimationFrame((ts) => frame(ts, loop));
 }
 
 export function leave() {
@@ -297,8 +302,9 @@ function medianInWindow(t0, t1) {
   return vals.length ? vals[vals.length >> 1] : NaN;
 }
 
-function frame(ts) {
-  if (!active || !session) return;
+function frame(ts, loop) {
+  // One drawing loop per visit: an older loop stops when the screen is entered again.
+  if (!active || !session || loop !== token) return;
   const dt = lastFrame ? Math.min(0.1, (ts - lastFrame) / 1000) : 0;
   lastFrame = ts;
   if (session.phase === "play") {
@@ -313,7 +319,11 @@ function frame(ts) {
   center = followCenter(center, medianInWindow(t0, t1), spanFor(chart), dt);
   draw();
   drawTimeline();
-  requestAnimationFrame(frame);
+  if (DEBUG && ts - lastDebug > 500) {
+    lastDebug = ts;
+    $("songSub").textContent = latencyReport();
+  }
+  requestAnimationFrame((t) => frame(t, loop));
 }
 
 function drawTimeline() {
@@ -421,6 +431,7 @@ $("timeBar").addEventListener("pointermove", (e) => {
 
 onSettingsChange(() => {
   if (!song) return;
+  if (player) player.sync = settings.sync / 1000;
   viewIcon($("songViewBtn"));
   if (stream) {
     stream.smoothingFrames = settings.smoothing;

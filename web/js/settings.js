@@ -14,6 +14,7 @@ const DEFAULTS = {
   keyIndex: 2, octave: 3, fine: 0,   // Re (D3) until the singer picks their own key
   scale: "dashti", level: "gentle", view: "notes",
   smoothing: 3, history: 6, gate: -55, configured: false,
+  sync: 0,                           // ms added to the song playhead ("picture timing")
 };
 
 function load() {

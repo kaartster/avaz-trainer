@@ -11,6 +11,7 @@ export class Player {
     this.node = null;
     this.startedAt = 0;      // context time when playback of `offset` started
     this.offset = 0;
+    this.sync = 0;           // seconds added to the position: the "picture timing" setting
   }
 
   get duration() {
@@ -47,13 +48,36 @@ export class Player {
     this.node = null;
   }
 
-  /** The position being heard right now (output latency taken off), in seconds. */
+  /** The position being heard right now, in seconds. */
   get position() {
     if (!this.node) return this.offset;
-    const ctx = audioContext();
-    const latency = (ctx.outputLatency || 0) + (ctx.baseLatency || 0);
-    return Math.max(this.offset, this.offset + ctx.currentTime - this.startedAt - latency);
+    return Math.max(this.offset, this.offset + heardTime() - this.startedAt + this.sync);
   }
+}
+
+/**
+ * The context time of the sound reaching the speaker right now.
+ *
+ * getOutputTimestamp() says which context time was at the output at which
+ * moment, measured by the audio system itself. The older way, currentTime minus
+ * outputLatency and baseLatency, is a guess that on Android can be too large,
+ * which made the screen trail the sound. It stays as the fallback.
+ */
+export function heardTime() {
+  const ctx = audioContext();
+  const ts = ctx.getOutputTimestamp ? ctx.getOutputTimestamp() : null;
+  if (ts && ts.contextTime > 0 && ts.performanceTime > 0) {
+    return ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
+  }
+  return ctx.currentTime - (ctx.outputLatency || 0) - (ctx.baseLatency || 0);
+}
+
+/** Latency numbers for the ?debug readout, in milliseconds. */
+export function latencyReport() {
+  const ctx = audioContext();
+  const ms = (s) => Math.round(1000 * s);
+  return `output ${ms(ctx.outputLatency || 0)} ms, base ${ms(ctx.baseLatency || 0)} ms, ` +
+    `measured ${ms(ctx.currentTime - heardTime())} ms`;
 }
 
 /** Decode a stored recording for playback at the device's own sample rate. */

@@ -27,6 +27,7 @@ let lastVoiceAt = -Infinity;    // trace time of the last voiced frame
 let lastFrame = performance.now();
 let lastReadout = 0;
 let active = false;
+let loops = 0;                  // id of the current drawing loop; older ones stop
 
 export function enter() {
   active = true;
@@ -60,7 +61,8 @@ async function startListening() {
   tracker.reset();
   awake.acquire();
   setListeningUi(true);
-  requestAnimationFrame(frame);
+  const loop = ++loops;
+  requestAnimationFrame((ts) => frame(ts, loop));
 }
 
 function stopListening() {
@@ -107,8 +109,8 @@ function draw() {
   });
 }
 
-function frame(ts) {
-  if (!stream) return;
+function frame(ts, loop) {
+  if (!stream || loop !== loops) return;
   const dt = Math.min(0.1, (ts - lastFrame) / 1000);
   lastFrame = ts;
   center = followCenter(center, trace.recentMedian(2), spanFor(chart), dt);
@@ -118,7 +120,7 @@ function frame(ts) {
     lastReadout = ts;
     showReadout(trace.stableCents(0.3));
   }
-  requestAnimationFrame(frame);
+  requestAnimationFrame((t) => frame(t, loop));
 }
 
 function showReadout(cents) {

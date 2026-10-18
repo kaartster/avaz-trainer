@@ -50,10 +50,16 @@ function render() {
   $("gate").value = settings.gate;
   $("gateHelp").textContent = `Sounds quieter than ${settings.gate} dB are ignored. ` +
     "Raise it in a noisy room, lower it if soft singing is missed.";
+  $("sync").value = settings.sync;
+  $("syncHelp").textContent = (settings.sync ? `Picture moved ${Math.abs(settings.sync)} ms ` +
+    `${settings.sync > 0 ? "ahead" : "back"}. ` : "") +
+    "For the teacher's recordings: if the notes on screen come after what you hear, slide right; " +
+    "if they come before it, slide left. Bluetooth headphones usually need it.";
 }
 
 $("fine").addEventListener("input", (e) => { settings.fine = Number(e.target.value); changed(); });
 $("gate").addEventListener("input", (e) => { settings.gate = Number(e.target.value); changed(); });
+$("sync").addEventListener("input", (e) => { settings.sync = Number(e.target.value); changed(); });
 
 $("settings").addEventListener("close", () => {
   settings.configured = true;
