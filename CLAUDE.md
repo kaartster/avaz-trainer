@@ -25,7 +25,7 @@ A personal practice tool for Persian classical singing (avaz). It listens to my 
 - Automatic dastgah or gusheh recognition.
 - Western note names as the main display. Western names may appear as a secondary label only.
 - Native mobile apps (Kotlin, Flutter, app stores). The phone version is a web app.
-- Offline analysis on the phone (pyin, Demucs, slicing). That stays on the laptop.
+- Heavy offline analysis on the phone (pyin, Demucs). The phone runs plain YIN over a recording; pyin and vocal separation stay on the laptop.
 
 ## Domain notes (important)
 
@@ -64,7 +64,7 @@ These are placeholders to replace after calibration against my teacher's recordi
 - A Progressive Web App: installable from Chrome ("Add to Home screen"), works offline through a service worker, keeps the screen awake while listening.
 - Microphone through `getUserMedia` with echo cancellation, noise suppression and auto gain turned off (they distort pitch), and an `AudioWorklet` that hands audio blocks to the main thread.
 - Live pitch: a JavaScript port of the numpy YIN in `pitch_live.py`, same parameters.
-- Pure logic lives in modules without DOM or audio access (`cents.js`, `yin.js`, `scales.js`, `notes.js`, `stream.js`, `feedback.js`) and is tested in `web/tests.html`, which runs in any browser. Keep their behavior identical to the Python modules of the same name.
+- Pure logic lives in modules without DOM or audio access (`cents.js`, `yin.js`, `scales.js`, `notes.js`, `stream.js`, `feedback.js`, `offline.js`, `turns.js`) and is tested in `web/tests.html`, which runs in any browser. Keep their behavior identical to the Python modules of the same name.
 - Scale positions come from `config/scales.yaml`, exported to `web/scales.json` by `avaz web`. A pytest checks the two stay in sync.
 - Per-user choices (key, dastgah, feedback level) are stored in the browser (`localStorage`), so each classmate keeps their own.
 
@@ -112,7 +112,8 @@ avaz-trainer/
     index.html
     tests.html           # browser test runner for the pure JS logic
     scales.json          # exported from config/scales.yaml
-    js/                  # cents, yin, scales, notes, stream, feedback, audio, chart, app
+    js/                  # pure logic (cents, yin, scales, notes, stream, feedback, offline, turns),
+                         # screens (home, live, song), audio, chart, store (IndexedDB)
   data/                  # gitignored
     teacher/             # original recordings from my teacher
     phrases/             # sliced phrases (audio + pitch curve)
@@ -176,10 +177,12 @@ Each milestone ends with something I can run.
 - Pick my key by solfege name and the dastgah in a settings sheet, then tap the mic button: scrolling note lanes with my voice, the current note name, and plain words for in tune, low or high. Optional drone on the tonic. A demo mode (`?demo`) feeds a synthetic voice for testing without a mic.
 - **Done when**: on my phone the curve follows my voice with no visible delay, sustained notes are stable, and the note name matches what my teacher calls it.
 
-### P2: Phone practice mode
-- `avaz export-phone <song>` bundles a song's phrases (audio, pitch curves, tonic, scale positions) into one pack the phone can load.
-- Play, loop and slow down a phrase (pitch preserved), see the teacher's lanes with mine on top, record attempts on the phone. A latency offset setting for Bluetooth headphones.
-- **Done when**: I can practice a lesson on the phone without the laptop.
+### P2: Phone song mode (sing after the teacher)
+- Songs are added on the phone itself: pick the teacher's file (m4a, opus, mp3, wav) or share it from WhatsApp to the installed app. The phone decodes it, runs YIN over the whole recording in a worker (about 10 s for 4 minutes), reads the teacher's key from the file name, and stores everything in IndexedDB. No laptop needed. (Decided 2026-10-18: phone import over laptop packs.)
+- "Pause anywhere", like the laptop song mode: Play, tap My turn wherever I want, the app waits for my voice and lines my start up with the teacher's, then finishes by itself when I stop. Then Continue, Sing again or Hear again. Back 5 s and a seek bar.
+- Per song: teacher's key (from the name, or set by hand) and whether I sing it in the teacher's key or my own. My curves are saved per stretch for P3.
+- **Done when**: I can practice a whole song on the phone without the laptop.
+- Later: slow playback with pitch preserved, a latency offset for Bluetooth headphones, laptop packs for recordings that need vocal separation.
 
 ### P3: Phone scoring and history
 - Port the numpy DTW scoring and the gentle feedback to JavaScript, tested against the same cases as the Python version. Keep progress per phrase on the phone, with a way to copy attempts back to the laptop.

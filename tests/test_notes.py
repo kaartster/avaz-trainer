@@ -38,6 +38,16 @@ def test_note_blocks_bridge_short_gaps_and_drop_short_blips():
     assert empty["t0"].size == 0
 
 
+def test_note_blocks_do_not_flicker_between_two_lanes():
+    hop = 0.01
+    t = np.arange(0, 2.0, hop)
+    c = -440 + 18 * np.sin(2 * np.pi * 5.5 * t)   # vibrato around the La / Si bemol midpoint
+    b = note_blocks(t, c, [-500, -400, -200])
+    assert list(b["center"]) == [-400.0]
+    b = note_blocks(t, c, [-500, -400, -200], stickiness=0)
+    assert len(b["center"]) > 3                  # without it: many short blocks
+
+
 def test_scale_note_name_with_koron_and_sori():
     mi = 164.81
     assert scale_note_name(mi, 0) == "Mi"

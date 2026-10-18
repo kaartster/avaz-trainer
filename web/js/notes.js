@@ -46,3 +46,56 @@ export function scaleNoteName(tonicHz, cents) {
   if (NATURAL.has(upper)) return `${SOLFEGE[upper]} koron`;
   return SOLFEGE[index];
 }
+
+// ---------------------------------------------------------------- key from a file name
+//
+// The teacher names recordings after their key: "دشتی فا دیز" (Dashti in Fa diez),
+// "دشتی ر", "دشتی می بمل". The name gives the note but not the octave, so the
+// octave is picked from where the voice actually sits (see tonicFromName).
+
+const PERSIAN_NOTES = { "دو": 0, "ره": 2, "ر": 2, "ری": 2, "می": 4, "فا": 5, "سل": 7, "سول": 7,
+  "لا": 9, "سی": 11 };
+const LATIN_NOTES = { do: 0, re: 2, mi: 4, fa: 5, sol: 7, la: 9, si: 11 };
+const SHARP = ["دیز", "diez", "dies", "sharp", "#"];
+const FLAT = ["بمل", "bemol", "flat"];
+
+// Longest names first, so "سول" is tried before "سل" and "ره" before "ر".
+// None of the names contain regex special characters, so they go in as they are.
+const NOTE_ALTERNATIVES = [...Object.keys(PERSIAN_NOTES), ...Object.keys(LATIN_NOTES)]
+  .sort((a, b) => b.length - a.length).join("|");
+// Not preceded or followed by a letter or digit (any script).
+const KEY_PATTERN = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(${NOTE_ALTERNATIVES})[ _\-]?(${[...SHARP, ...FLAT].join("|")})?` +
+  String.raw`(?![\p{L}\p{N}#])`, "giu");
+
+/**
+ * Note index (0 = Do ... 11 = Si) of the key written in a recording's name, or null.
+ * The last note name wins: the key is written at the end, and earlier words in a
+ * title can look like note names ("می" is also a common verb prefix in Persian).
+ */
+export function keyFromName(name) {
+  let text = String(name).replace(/‌/g, "");       // zero width non-joiner
+  for (const suffix of [".vocals", ".accompaniment"]) text = text.split(suffix).join(" ");
+  text = text.replace(/\.\w+$/, "").replace(/["'«»“”]/g, " ");
+  const matches = [...text.matchAll(KEY_PATTERN)];
+  if (matches.length === 0) return null;
+  const last = matches[matches.length - 1];
+  const note = last[1].toLowerCase(), accidental = (last[2] || "").toLowerCase();
+  let index = note in PERSIAN_NOTES ? PERSIAN_NOTES[note] : LATIN_NOTES[note];
+  if (SHARP.includes(accidental)) index += 1;
+  else if (FLAT.includes(accidental)) index -= 1;
+  return ((index % 12) + 12) % 12;
+}
+
+// In Dashti the melody sits mostly below the tonic: across the teacher's recordings
+// the median pitch is 200 to 250 cents (about a whole tone) under it.
+export const TONIC_ABOVE_MEDIAN_CENTS = 250;
+
+/** The tonic in Hz from the key in `name`, in the octave that fits the voice, or null. */
+export function tonicFromName(name, medianHz) {
+  const index = keyFromName(name);
+  if (index === null || !(medianHz > 0)) return null;
+  const target = 69 + 12 * Math.log2(medianHz / A4_HZ) + TONIC_ABOVE_MEDIAN_CENTS / 100;
+  const midi = index + 12 * Math.round((target - index) / 12);
+  return A4_HZ * Math.pow(2, (midi - 69) / 12);
+}

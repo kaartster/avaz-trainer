@@ -4,7 +4,10 @@
 import { centsToHz, foldOctave, foldToReference, hzToCents, median } from "./cents.js";
 import { demoVoice } from "./demo.js";
 import { NoteTracker, tuneWords } from "./feedback.js";
-import { hzToNote, keyLabel, noteToHz, scaleNoteName } from "./notes.js";
+import { hzToNote, keyFromName, keyLabel, noteToHz, scaleNoteName, tonicFromName } from "./notes.js";
+import { analyzeSamples, estimateTonic, firstVoicedTime, medianFilter, octaveShift, removeBoundaryPins,
+         removeOutliers, removeShortIslands } from "./offline.js";
+import { OnsetDetector, SongSession, Take } from "./turns.js";
 import { Scale, laneEdges, nearestNote, noteBlocks, scalesFromJson } from "./scales.js";
 import { LiveTrace, PitchStream, followCenter } from "./stream.js";
 import { Yin } from "./yin.js";
@@ -186,6 +189,13 @@ test("note blocks bridge short gaps and drop short blips", () => {
   eq(noteBlocks(t, t.map(() => NaN), [0, 150]).length, 0);
 });
 
+test("note blocks do not flicker between two lanes", () => {
+  const t = range(200, (i) => i * 0.01);
+  const c = t.map((x) => -440 + 18 * Math.sin(2 * Math.PI * 5.5 * x));
+  eq(noteBlocks(t, c, [-500, -400, -200]).map((b) => b.center), [-400]);
+  ok(noteBlocks(t, c, [-500, -400, -200], 0.05, 0.03, 0).length > 3, "without stickiness");
+});
+
 // ---------------------------------------------------------------- yin
 
 for (const freq of [80, 110, 196, 261.6, 440, 880]) {
@@ -315,6 +325,175 @@ test("demo voice through the pipeline lands on the scale notes", () => {
   const settled = pts.filter((p) => p[0] > 0.3).map((p) => p[2]);
   ok(settled.length > 50 && settled.every(Number.isFinite), "voiced");
   approx(median(settled), 0, 5, "median on the tonic");
+});
+
+// ---------------------------------------------------------------- key from a file name
+
+const NAMES = [
+  ["با من صنما_ دشتی_ فا دیز.m4a", 6],
+  ["شبانگاهان_ دشتی فادیز.vocals.wav", 6],
+  ["دلشکن _ دشتی می بمل.m4a", 3],
+  ["شبانگاهان دشتی ''می''.m4a", 4],
+  ["کعبه دلها _ دشتی ر.m4a", 2],
+  ["کعبه‌ی دل‌ها_ دشتی فا دیز.pitch.json", 6],
+  ["dashti in Fa diez.mp3", 6],
+  ["exercise Si bemol.wav", 10],
+  ["دلم می گیرد دشتی سل.m4a", 7],
+  ["my song.m4a", null],
+  ["ba_man_sanama.labels.txt", null],
+];
+for (const [name, index] of NAMES) {
+  test(`key from name: ${name}`, () => eq(keyFromName(name), index));
+}
+
+test("tonic from name picks the octave from the voice", () => {
+  approx(tonicFromName("دشتی می بمل", 136.8), 155.56, 0.01);
+  approx(tonicFromName("دشتی فا دیز", 127.6), 185.0, 0.01);
+  approx(tonicFromName("دشتی ر", 128.4), 146.83, 0.01);
+  approx(tonicFromName("دشتی ر", 2 * 128.4), 293.66, 0.01);
+  eq(tonicFromName("no key here", 130), null);
+  eq(tonicFromName("دشتی ر", null), null);
+});
+
+// ---------------------------------------------------------------- offline analysis
+
+test("short voiced islands are removed", () => {
+  const f = Float32Array.from([NaN, 200, NaN, 200, 200, 200, NaN, 300, 300]);
+  const out = Array.from(removeShortIslands(f, 3));
+  ok(Number.isNaN(out[1]) && out[3] === 200 && out[5] === 200 && Number.isNaN(out[7]));
+});
+
+test("median filter votes out a slip and keeps NaN majorities", () => {
+  const out = medianFilter(Float32Array.from([200, 200, 400, 200, 200, NaN, NaN, NaN, 200]), 3);
+  eq(out[2], 200);
+  ok(Number.isNaN(out[6]));
+});
+
+test("outliers and boundary pins are blanked", () => {
+  const o = removeOutliers(Float32Array.from([200, 210, 190, 200, 200 * 2 ** (1600 / 1200)]), 1500);
+  ok(Number.isNaN(o[4]) && o[0] === 200);
+  const b = removeBoundaryPins(Float32Array.from([70, 71, 200, 999]), 70, 1000, 25);
+  ok(Number.isNaN(b[0]) && Number.isNaN(b[1]) && b[2] === 200 && Number.isNaN(b[3]));
+});
+
+test("analysis of a sung tone with a pause", () => {
+  const sr = 22050;
+  const n = sr * 2;
+  const y = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    if (t < 0.8 || t > 1.1) y[i] = 0.2 * Math.sin(2 * Math.PI * 185 * t) + 0.1 * Math.sin(4 * Math.PI * 185 * t);
+  }
+  const { hop, f0 } = analyzeSamples(y, sr);
+  approx(hop, 256 / sr, 1e-12);
+  const at = (t) => f0[Math.round(t / hop)];
+  approx(hzToCents(at(0.4), 185), 0, 3, "first note");
+  approx(hzToCents(at(1.5), 185), 0, 3, "after the pause");
+  ok(Number.isNaN(at(0.95)), "pause is unvoiced");
+});
+
+test("tonic estimate from a histogram", () => {
+  const r = rng(3);
+  const noise = () => 8 * (r() + r() + r() - 1.5);
+  const f0 = [
+    ...range(600, () => 185 * 2 ** (noise() / 1200)),
+    ...range(200, () => 185 * 2 ** ((300 + noise()) / 1200)),
+    ...range(100, () => 185 * 2 ** ((1200 + noise()) / 1200)),
+    ...range(100, () => 185 * 2 ** ((700 + noise()) / 1200)),
+    ...range(50, () => NaN),
+  ];
+  approx(hzToCents(estimateTonic(Float32Array.from(f0)), 185), 0, 10);
+});
+
+test("first voiced time needs a run", () => {
+  const t = range(10, (i) => i * 0.01);
+  approx(firstVoicedTime(t, [NaN, 1, NaN, 1, 1, 1, 1, NaN, NaN, NaN], 3), 0.03, 1e-12);
+  ok(Number.isNaN(firstVoicedTime(t, t.map(() => NaN), 3)));
+});
+
+test("octave shift moves my median next to the teacher's", () => {
+  const teacher = range(30, () => 100), mine = range(30, () => -1100);
+  eq(octaveShift(mine, teacher), 1200);
+  eq(octaveShift(mine.slice(0, 5), teacher), 0, "too few points");
+});
+
+// ---------------------------------------------------------------- singing after the teacher
+
+test("song session: play, my turn, sing, review, continue", () => {
+  const s = new SongSession(60);
+  s.primary();
+  eq(s.phase, "play");
+  ok(!s.tick(7.5));
+  s.primary();
+  eq([s.phase, s.segStart, s.segEnd], ["wait", 0, 7.5]);
+  s.voiceStarted();
+  eq(s.phase, "sing");
+  s.primary();
+  eq(s.phase, "review");
+  s.primary();
+  eq([s.phase, s.segStart, s.pos], ["play", 7.5, 7.5], "continues where I paused");
+});
+
+test("song session: hear again pauses at the end of the stretch by itself", () => {
+  const s = new SongSession(60, 10);
+  s.primary();
+  s.tick(14);
+  s.primary();
+  s.hearAgain();
+  eq([s.phase, s.pos], ["play", 10]);
+  ok(!s.tick(13.9));
+  ok(s.tick(14.05), "auto pause");
+  eq([s.phase, s.segStart, s.segEnd], ["wait", 10, 14]);
+});
+
+test("song session: sing again, seek and the end of the song", () => {
+  const s = new SongSession(20);
+  s.primary();
+  s.tick(5);
+  s.primary();
+  s.primary();
+  s.singAgain();
+  eq(s.phase, "wait");
+  s.seek(12);
+  eq([s.phase, s.pos], ["idle", 12]);
+  s.primary();
+  ok(s.tick(20.3), "pauses at the end");
+  eq([s.phase, s.segEnd, s.reachedEnd], ["wait", 20, true]);
+  s.primary();
+  s.primary();
+  eq(s.phase, "idle", "nothing left to play");
+  s.primary();
+  eq([s.phase, s.pos], ["play", 0], "starts over");
+});
+
+test("onset needs loud pitched frames after the grace time", () => {
+  const o = new OnsetDetector({ graceUntil: 1, rmsDb: -50, voicedFrames: 3 });
+  eq(o.feed(0.5, 100, -20), null, "grace time");
+  eq(o.feed(1.0, 100, -20), null);
+  eq(o.feed(1.01, NaN, -20), null, "run broken");
+  o.feed(1.02, 100, -20);
+  eq(o.feed(1.03, 100, -60), null, "too quiet");
+  o.feed(1.04, 100, -20);
+  o.feed(1.05, 100, -20);
+  eq(o.feed(1.06, 100, -20), 1.04);
+});
+
+test("a take lines my onset up with the teacher's", () => {
+  const tt = range(1000, (i) => i * 0.01);
+  const tc = tt.map((t) => (t >= 2.5 && t < 4 ? 0 : NaN));     // teacher sings 2.5 to 4 s
+  const take = new Take(tt, tc, 2, 5);
+  approx(take.teacherOnset, 2.5, 1e-9);
+  approx(take.teacherEnd, 3.99, 1e-9);
+  for (let i = 0; i < 50; i++) take.listen(10 + i * 0.01, NaN);  // breathing, 10 to 10.5 s mic time
+  ok(!take.started);
+  take.begin(10.5);
+  for (let i = 0; i < 150; i++) take.add(10.5 + i * 0.01, 5);
+  approx(take.times[0], 2.35, 1e-9, "0.15 s of preroll kept");
+  approx(take.times[take.cents.findIndex(Number.isFinite)], 2.5, 1e-9, "my first note at the teacher's onset");
+  approx(take.cursor, 3.99, 1e-9);
+  ok(!take.finished(), "still singing");
+  for (let i = 0; i < 110; i++) take.add(12 + i * 0.01, NaN);
+  ok(take.finished(), "past the end and quiet");
 });
 
 // ---------------------------------------------------------------- report

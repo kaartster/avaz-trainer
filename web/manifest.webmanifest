@@ -1,7 +1,7 @@
 {
   "name": "Avaz Trainer",
   "short_name": "Avaz",
-  "description": "Live pitch practice for Persian classical singing",
+  "description": "Practice Persian classical singing with your teacher's recordings",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -13,5 +13,19 @@
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
     { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
-  ]
+  ],
+  "share_target": {
+    "action": "./share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "files": [
+        {
+          "name": "audio",
+          "accept": ["audio/*", ".m4a", ".opus", ".ogg", ".mp3", ".wav", ".aac", ".flac"]
+        }
+      ]
+    }
+  }
 }

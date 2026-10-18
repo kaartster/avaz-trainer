@@ -4,26 +4,93 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#14171c">
-  <meta name="description" content="Live pitch practice for Persian classical singing (avaz)">
+  <meta name="description" content="Practice Persian classical singing (avaz) with your teacher's recordings">
   <title>Avaz Trainer</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="css/app.css">
+  <!-- Fetch every module at once instead of discovering them import by import. -->
+  <link rel="modulepreload" href="js/app.js">
+  <link rel="modulepreload" href="js/home.js">
+  <link rel="modulepreload" href="js/live.js">
+  <link rel="modulepreload" href="js/song.js">
+  <link rel="modulepreload" href="js/settings.js">
+  <link rel="modulepreload" href="js/sheet.js">
+  <link rel="modulepreload" href="js/ui.js">
+  <link rel="modulepreload" href="js/library.js">
+  <link rel="modulepreload" href="js/store.js">
+  <link rel="modulepreload" href="js/notes.js">
+  <link rel="modulepreload" href="js/audio.js">
+  <link rel="modulepreload" href="js/cents.js">
+  <link rel="modulepreload" href="js/chart.js">
+  <link rel="modulepreload" href="js/offline.js">
+  <link rel="modulepreload" href="js/player.js">
+  <link rel="modulepreload" href="js/stream.js">
+  <link rel="modulepreload" href="js/turns.js">
+  <link rel="modulepreload" href="js/yin.js">
+  <link rel="modulepreload" href="js/scales.js">
+  <link rel="modulepreload" href="js/feedback.js">
+  <link rel="modulepreload" href="js/demo.js">
 </head>
 <body>
-  <main class="app">
+
+  <!-- ================================================================ home -->
+  <main id="home" class="screen home" hidden>
     <header class="bar">
-      <button id="keyChip" class="chip" aria-label="Key and dastgah settings">
-        <span id="keyName">Re</span><span class="dot">·</span><span id="scaleName">Dashti</span>
+      <h1 class="brand">Avaz</h1>
+      <button id="homeSettings" class="chip" aria-label="Your key and settings">
+        <span id="homeKey">Re</span><span class="dot">·</span><span id="homeScale">Dashti</span>
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>
       </button>
+    </header>
+
+    <div class="home-list">
+      <a href="#/live" class="card free">
+        <span class="card-icon" aria-hidden="true">
+          <svg class="ico" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </span>
+        <span class="card-text">
+          <span class="card-title">Free singing</span>
+          <span class="card-sub">See your voice on the notes, no recording</span>
+        </span>
+      </a>
+
+      <h2 class="section-title">Teacher's recordings</h2>
+      <ul id="songList" class="song-list"></ul>
+      <p id="emptySongs" class="empty" hidden>
+        Add a recording your teacher sent you. After installing the app you can also
+        share a recording from WhatsApp straight to Avaz.
+      </p>
+    </div>
+
+    <footer class="dock">
+      <label class="wide-btn">
+        <input id="fileInput" type="file" accept="audio/*,.m4a,.opus,.ogg,.mp3,.wav,.aac,.flac" hidden>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        Add recording
+      </label>
+    </footer>
+  </main>
+
+  <!-- ================================================================ free singing -->
+  <main id="live" class="screen app" hidden>
+    <header class="bar">
+      <div class="bar-start">
+        <a href="#/" class="icon-btn" aria-label="Back">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </a>
+        <button id="keyChip" class="chip" aria-label="Key and dastgah settings">
+          <span id="keyName">Re</span><span class="dot">·</span><span id="scaleName">Dashti</span>
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>
+        </button>
+      </div>
       <div class="bar-actions">
         <button id="droneBtn" class="icon-btn" aria-pressed="false" aria-label="Drone on the tonic">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h2l3-7 4 14 3-7h4"/></svg>
         </button>
-        <button id="viewBtn" class="icon-btn" aria-label="Switch between notes and curve">
-          <svg class="ico" id="viewIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h7M13 12h7M6 17h8"/></svg>
+        <button id="viewBtn" class="icon-btn view-btn" aria-label="Switch between notes and curve">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h7M13 12h7M6 17h8"/></svg>
         </button>
       </div>
     </header>
@@ -58,11 +125,66 @@
     </footer>
   </main>
 
+  <!-- ================================================================ song -->
+  <main id="song" class="screen song" hidden>
+    <header class="bar">
+      <div class="bar-start">
+        <a href="#/" class="icon-btn" aria-label="Back">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </a>
+        <button id="songKeyChip" class="chip song-chip" aria-label="Keys for this song">
+          <span id="songTitle" class="chip-title">Song</span>
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>
+        </button>
+      </div>
+      <div class="bar-actions">
+        <button id="songViewBtn" class="icon-btn view-btn" aria-label="Switch between notes and curve">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h7M13 12h7M6 17h8"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="status" aria-live="polite">
+      <div id="songPhase" class="phase">Loading</div>
+      <div id="songSub" class="phase-sub"></div>
+    </section>
+
+    <section class="chart-wrap">
+      <canvas id="songChart" aria-label="The teacher's notes and yours"></canvas>
+      <div id="songHint" class="hint" hidden></div>
+    </section>
+
+    <section class="timeline">
+      <div id="timeBar" class="time-bar" role="slider" aria-label="Position in the song" tabindex="0">
+        <div id="timeDone" class="time-done"></div>
+        <div id="timeSeg" class="time-seg"></div>
+        <div id="timeKnob" class="time-knob"></div>
+      </div>
+      <div class="time-labels"><span id="timePos">0:00</span><span id="timeLen">0:00</span></div>
+    </section>
+
+    <footer class="dock song-dock">
+      <button id="songLeft" class="side-btn" hidden>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 3-6.2M4 4v4h4"/></svg>
+        <span id="songLeftLabel">Hear again</span>
+      </button>
+      <button id="songMain" class="main-btn">
+        <span id="songMainIco" class="main-ico" aria-hidden="true"></span>
+        <span id="songMainLabel">Play</span>
+      </button>
+      <button id="songRight" class="side-btn" hidden>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        <span id="songRightLabel">Sing again</span>
+      </button>
+    </footer>
+  </main>
+
+  <!-- ================================================================ sheets -->
   <dialog id="settings" class="sheet">
     <form method="dialog" class="sheet-body">
       <div class="sheet-grip" aria-hidden="true"></div>
       <h2>Your key</h2>
-      <p id="keyIntro" class="help">The note your teacher told you to sing this song in.</p>
+      <p id="keyIntro" class="help">The note your teacher told you to sing in.</p>
       <div id="keyGrid" class="key-grid" role="radiogroup" aria-label="Key"></div>
       <div class="row">
         <span class="label">Octave</span>
@@ -100,6 +222,46 @@
       <button class="done" value="done">Done</button>
     </form>
   </dialog>
+
+  <dialog id="songSheet" class="sheet">
+    <form method="dialog" class="sheet-body">
+      <div class="sheet-grip" aria-hidden="true"></div>
+      <h2>Teacher's key</h2>
+      <div class="row tight">
+        <p id="teacherKeyText" class="help grow"></p>
+        <button id="teacherKeyChange" type="button" class="opt small-opt">Change</button>
+      </div>
+      <div id="teacherKeyBox">
+        <div id="teacherKeyGrid" class="key-grid" role="radiogroup" aria-label="Teacher's key"></div>
+        <div class="row">
+          <span class="label">Octave</span>
+          <div id="teacherOctaves" class="seg" role="radiogroup" aria-label="Teacher's octave"></div>
+        </div>
+      </div>
+
+      <h2>I sing it in</h2>
+      <div id="sameKeyChoice" class="seg" role="radiogroup" aria-label="Key I sing in"></div>
+      <div id="myKeyBox">
+        <div id="myKeyGrid" class="key-grid" role="radiogroup" aria-label="My key"></div>
+        <div class="row">
+          <span class="label">Octave</span>
+          <div id="myOctaves" class="seg" role="radiogroup" aria-label="My octave"></div>
+        </div>
+      </div>
+      <p id="myKeyText" class="help"></p>
+
+      <button class="done" value="done">Done</button>
+      <button id="deleteSong" type="button" class="text-btn danger">Remove this recording</button>
+    </form>
+  </dialog>
+
+  <div id="busy" class="busy" hidden>
+    <div class="busy-card">
+      <div id="busyTitle" class="busy-title">Adding recording</div>
+      <div id="busyStep" class="busy-step"></div>
+      <div class="busy-bar"><div id="busyFill" class="busy-fill"></div></div>
+    </div>
+  </div>
 
   <div id="toast" class="toast" role="status" hidden></div>
 

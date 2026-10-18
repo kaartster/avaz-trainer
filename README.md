@@ -270,16 +270,36 @@ The attempt is measured against the tonic stored in its meta file (the one the
 practice session used). Pass `--my-tonic <hz>` to rescore against another tonic,
 for example after changing `tonic.mine_hz` in settings.
 
-## Phone app (live view)
+## Phone app
 
-`web/` is a version of the live view for Android phones: a web app that runs in
-Chrome and can be added to the home screen. Pick your key and dastgah in the
-sheet that opens on first use, tap the mic and sing. The screen shows the note
-you are on (Re, Mi koron, Fa sori ...), plain words (in tune, a bit low, go up)
-and your voice lighting up the note lanes. The view follows your voice up and
-down by itself. The top right buttons switch on a drone on your tonic (use
-headphones, or the mic hears it) and switch between note lanes and the detailed
-curve. "Detailed" feedback in the settings adds cents and Hz.
+`web/` is a version for Android phones: a web app that runs in Chrome and can
+be added to the home screen. Pick your key and dastgah in the sheet that opens
+on first use.
+
+**Free singing** shows the note you are on (Re, Mi koron, Fa sori ...), plain
+words (in tune, a bit low, go up) and your voice lighting up the note lanes.
+The view follows your voice up and down by itself. The top right buttons
+switch on a drone on your tonic (use headphones, or the mic hears it) and
+switch between note lanes and the detailed curve. "Detailed" feedback in the
+settings adds cents and Hz.
+
+**Teacher's recordings**: tap **Add recording** and pick the file your teacher
+sent (m4a, opus, mp3, wav). Once the app is installed you can also share a
+recording from WhatsApp straight to Avaz. The phone finds the teacher's notes
+itself (about ten seconds for a four minute song) and reads the key from the
+file name ("... دشتی فا دیز" is Fa diez). If the name has no key, tap the song
+name at the top and pick it. The same sheet chooses whether you sing in the
+teacher's key or your own; a recording in your own key ("... دشتی ر" when you
+sing in Re) is set to the teacher's key by itself.
+
+Then: **Play**, and tap **My turn** wherever you want to sing back what you
+just heard. The app waits for your voice, so breathing time does not count,
+and draws you (green on the note, orange off it) over the teacher (blue). It
+stops by itself when you finish. **Continue** goes on with the song, **Sing
+again** tries the same stretch, **Hear again** replays it first. While the
+teacher plays, **Back 5 s** jumps back, and the bar under the chart seeks.
+Everything stays on the phone; your curves are kept per stretch for scoring
+later.
 
 On the laptop:
 
@@ -288,7 +308,7 @@ avaz web
 ```
 
 Then open http://localhost:8765 (add `?demo` for a synthetic singer, no mic
-needed) and http://localhost:8765/tests.html for the logic tests.
+needed, and `&mute` to play recordings silently) and http://localhost:8765/tests.html for the logic tests.
 
 On the phone, Chrome only allows the microphone on https pages or on
 localhost. Two ways:

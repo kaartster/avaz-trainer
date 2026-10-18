@@ -10,6 +10,7 @@ from __future__ import annotations
 import functools
 import json
 import socket
+import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -56,7 +57,24 @@ def lan_address() -> str | None:
         return None
 
 
+class _V6Server(ThreadingHTTPServer):
+    address_family = socket.AF_INET6
+
+
 def serve(port: int = 8765, host: str = "127.0.0.1") -> None:
     handler = functools.partial(_Handler, directory=str(web_dir()))
-    with ThreadingHTTPServer((host, port), handler) as httpd:
-        httpd.serve_forever()
+    servers = [ThreadingHTTPServer((host, port), handler)]
+    if host == "127.0.0.1":
+        # Browsers try "localhost" on IPv6 (::1) first and wait about 300 ms per
+        # request before falling back to IPv4, so listen on both loopbacks.
+        try:
+            servers.append(_V6Server(("::1", port), handler))
+        except OSError:
+            pass
+    for extra in servers[1:]:
+        threading.Thread(target=extra.serve_forever, daemon=True).start()
+    try:
+        servers[0].serve_forever()
+    finally:
+        for s in servers:
+            s.server_close()

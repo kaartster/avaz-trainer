@@ -29,13 +29,17 @@ def lane_edges(centers) -> list[tuple[float, float, float]]:
     return [(float(a), float(lo), float(hi)) for a, lo, hi in zip(c, lows, highs)]
 
 
-def note_blocks(times, cents, centers, min_seconds: float = 0.05, max_gap: float = 0.03):
+def note_blocks(times, cents, centers, min_seconds: float = 0.05, max_gap: float = 0.03,
+                stickiness: float = 20.0):
     """Blocks of time spent on one scale note.
 
     Returns a dict of arrays ``t0``, ``t1``, ``center`` (the note, in cents) and
     ``dev`` (median deviation of the voice from that note, in cents). A block
     survives a gap in the voice of up to ``max_gap`` seconds; blocks shorter than
     ``min_seconds`` are dropped, so a slide through a note does not flash a block.
+    A voice sitting between two notes (vibrato around the midpoint) stays on the
+    note it was on until it is at least ``stickiness`` cents closer to the other
+    one, so the blocks do not flicker between the two lanes.
     """
     t = np.asarray(times, dtype=float)
     x = np.asarray(cents, dtype=float)
@@ -49,6 +53,12 @@ def note_blocks(times, cents, centers, min_seconds: float = 0.05, max_gap: float
     if voiced.any():
         d = np.abs(x[voiced, None] - c[None, :])
         idx[voiced] = np.argmin(d, axis=1)
+    prev = -1
+    for i in np.nonzero(voiced)[0]:
+        k = idx[i]
+        if prev >= 0 and k != prev and abs(x[i] - c[prev]) <= abs(x[i] - c[k]) + stickiness:
+            idx[i] = k = prev
+        prev = k
 
     t0s, t1s, cs, devs = [], [], [], []
     start = last = note = -1             # first and last frame index of the open block

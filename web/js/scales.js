@@ -82,22 +82,26 @@ export function laneEdges(centers) {
  * Blocks of time spent on one scale note, like a piano roll.
  * Each voiced frame goes to its nearest center; runs on the same note become one
  * block. A block survives a gap of up to `maxGap` seconds; blocks shorter than
- * `minSeconds` are dropped. Returns [{t0, t1, center, dev}], dev being the median
- * deviation from the note in cents.
+ * `minSeconds` are dropped. A voice between two notes stays on the one it was on
+ * until it is `stickiness` cents closer to the other, so vibrato around the
+ * midpoint does not flicker between two lanes. Returns [{t0, t1, center, dev}],
+ * dev being the median deviation from the note in cents.
  */
-export function noteBlocks(times, cents, centers, minSeconds = 0.05, maxGap = 0.03) {
+export function noteBlocks(times, cents, centers, minSeconds = 0.05, maxGap = 0.03, stickiness = 20) {
   const c = [...centers].sort((a, b) => a - b);
   const n = times.length;
   const blocks = [];
   if (n === 0 || c.length === 0) return blocks;
   const hop = n > 1 ? medianDiff(times) : 0;
   const idx = new Int32Array(n).fill(-1);
+  let prev = -1;
   for (let i = 0; i < n; i++) {
     const x = cents[i];
     if (!Number.isFinite(x)) continue;
     let best = 0;
     for (let k = 1; k < c.length; k++) if (Math.abs(x - c[k]) < Math.abs(x - c[best])) best = k;
-    idx[i] = best;
+    if (prev >= 0 && best !== prev && Math.abs(x - c[prev]) <= Math.abs(x - c[best]) + stickiness) best = prev;
+    idx[i] = prev = best;
   }
   let start = -1, last = -1, note = -1;
   const close = () => {
