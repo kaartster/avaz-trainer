@@ -1,6 +1,8 @@
 // Small UI helpers shared by the screens.
 
 import { laneEdges } from "./scales.js";
+import { saveSettings, settings } from "./settings.js";
+import { attachZoom, clampSpan, defaultSpan } from "./zoom.js";
 
 export const $ = (id) => document.getElementById(id);
 
@@ -33,16 +35,28 @@ export function toast(text, ms = 4000) {
   toastTimer = setTimeout(() => (t.hidden = true), ms);
 }
 
-/** Lanes of `scale` around `center` cents. */
-export function lanesAround(scale, center) {
-  const centers = [...new Set(scale.positionsInRange(center - 1600, center + 1600)
+/** Lanes of `scale` covering a view of `span` cents around `center`. */
+export function lanesAround(scale, center, span) {
+  const reach = span / 2 + 300;
+  const centers = [...new Set(scale.positionsInRange(center - reach, center + reach)
     .map(([c]) => Math.round(c * 1000) / 1000))];
   return laneEdges(centers);
 }
 
-/** Cents shown top to bottom: about 50 px per lane. */
+/** Cents shown top to bottom: the zoom the singer chose, or at least one octave. */
 export function spanFor(chart) {
-  return Math.max(800, Math.min(1600, chart.h * 2.7));
+  return settings.span ? clampSpan(settings.span) : defaultSpan(chart.h);
+}
+
+let saveTimer = null;
+/** Pinch, wheel and double tap zoom on a chart's canvas, remembered for both charts. */
+export function zoomable(chart, redraw) {
+  attachZoom(chart.canvas, () => spanFor(chart), (span) => {
+    settings.span = span;
+    redraw();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveSettings, 400);
+  });
 }
 
 /** "3:07" */

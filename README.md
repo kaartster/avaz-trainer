@@ -283,6 +283,10 @@ switch on a drone on your tonic (use headphones, or the mic hears it) and
 switch between note lanes and the detailed curve. "Detailed" feedback in the
 settings adds cents and Hz.
 
+Both charts show at least one octave. Pinch to zoom in or out (up to three
+octaves; the mouse wheel does the same on a computer), and double tap to go
+back to one octave. The zoom is remembered.
+
 **Teacher's recordings**: tap **Add recording** and pick the file your teacher
 sent (m4a, opus, mp3, wav). Once the app is installed you can also share a
 recording from WhatsApp straight to Avaz. The phone finds the teacher's notes

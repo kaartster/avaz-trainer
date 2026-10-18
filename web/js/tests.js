@@ -8,6 +8,7 @@ import { hzToNote, keyFromName, keyLabel, noteToHz, scaleNoteName, tonicFromName
 import { analyzeSamples, estimateTonic, firstVoicedTime, medianFilter, octaveShift, removeBoundaryPins,
          removeOutliers, removeShortIslands } from "./offline.js";
 import { OnsetDetector, SongSession, Take } from "./turns.js";
+import { MAX_SPAN, MIN_SPAN, OCTAVE_VIEW, defaultSpan, pinchSpan, wheelSpan } from "./zoom.js";
 import { Scale, laneEdges, nearestNote, noteBlocks, scalesFromJson } from "./scales.js";
 import { LiveTrace, PitchStream, followCenter } from "./stream.js";
 import { Yin } from "./yin.js";
@@ -494,6 +495,27 @@ test("a take lines my onset up with the teacher's", () => {
   ok(!take.finished(), "still singing");
   for (let i = 0; i < 110; i++) take.add(12 + i * 0.01, NaN);
   ok(take.finished(), "past the end and quiet");
+});
+
+// ---------------------------------------------------------------- zoom
+
+test("default view shows at least one octave", () => {
+  eq(defaultSpan(300), OCTAVE_VIEW, "short chart");
+  ok(defaultSpan(400) >= 1200, "phone portrait");
+  eq(defaultSpan(2000), 2400, "very tall chart stops at two octaves");
+});
+
+test("pinch: fingers apart zooms in, together zooms out, within limits", () => {
+  eq(pinchSpan(1400, 100, 200), 700);
+  eq(pinchSpan(1400, 200, 100), 2800);
+  eq(pinchSpan(1400, 100, 1000), MIN_SPAN);
+  eq(pinchSpan(1400, 1000, 10), MAX_SPAN);
+  eq(pinchSpan(1400, 0, 50), 1400, "no distance yet");
+});
+
+test("wheel down zooms out", () => {
+  ok(wheelSpan(1400, 100) > 1400 && wheelSpan(1400, -100) < 1400);
+  eq(wheelSpan(3500, 10000), MAX_SPAN);
 });
 
 // ---------------------------------------------------------------- report

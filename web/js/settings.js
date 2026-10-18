@@ -15,6 +15,7 @@ const DEFAULTS = {
   scale: "dashti", level: "gentle", view: "notes",
   smoothing: 3, history: 6, gate: -55, configured: false,
   sync: 0,                           // ms added to the song playhead ("picture timing")
+  span: null,                        // cents shown top to bottom; null = at least one octave
 };
 
 function load() {

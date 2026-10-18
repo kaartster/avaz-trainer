@@ -7,7 +7,7 @@ import { SOLFEGE, scaleNoteName } from "./notes.js";
 import { scale, settings, titleCase, tolerance, tonicHz } from "./settings.js";
 import { onSettingsChange, openSettings, toggleView, viewIcon } from "./sheet.js";
 import { LiveTrace, PitchStream, followCenter } from "./stream.js";
-import { $, lanesAround, spanFor, toast } from "./ui.js";
+import { $, lanesAround, spanFor, toast, zoomable } from "./ui.js";
 import { Yin, dbToRms, rms } from "./yin.js";
 
 export const DEMO = new URLSearchParams(location.search).has("demo");
@@ -15,6 +15,7 @@ export const BLOCK = 512;        // samples per audio block, and per pitch estim
 export const FRAME = 2048;       // samples per YIN frame (about 43 ms at 48 kHz)
 
 const chart = new Chart($("chart"), () => draw());
+zoomable(chart, () => draw());
 const drone = new Drone();
 const awake = new ScreenAwake();
 let trace = new LiveTrace(settings.history);
@@ -102,7 +103,7 @@ function draw() {
   const tonic = tonicHz();
   chart.draw({
     t0: now - settings.history, t1: now, center, span: spanFor(chart),
-    lanes: lanesAround(scale(), center), view: settings.view, tolerance: tolerance(),
+    lanes: lanesAround(scale(), center, spanFor(chart)), view: settings.view, tolerance: tolerance(),
     name: (c) => scaleNoteName(tonic, c),
     current: tracker.current && now - lastVoiceAt < 1.5 ? tracker.current.position : null,
     layers: [{ times: trace.times, cents: trace.cents, role: "mine" }],

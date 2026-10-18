@@ -58,8 +58,12 @@ export class Chart {
          layers = [], cursor = null, shade = null }) {
     const { ctx, w, h, colors } = this;
     const lo = center - span / 2, hi = center + span / 2;
+    // Names shrink when zoomed out so neighbours don't overlap: 15 px down to 10 px,
+    // from the narrowest lane's height.
+    const narrowest = Math.min(...lanes.map(([, l, u]) => ((u - l) / span) * h));
+    const fontPx = Math.max(10, Math.min(15, Math.floor(narrowest * 0.6)));
     // Measured over all lanes (the names repeat each octave), so it does not shift while scrolling.
-    ctx.font = "700 15px system-ui, sans-serif";
+    ctx.font = `700 ${fontPx}px system-ui, sans-serif`;
     const gutter = Math.max(MIN_GUTTER, ...lanes.map(([c]) => ctx.measureText(name(c)).width + 20));
     const plotW = w - gutter - RIGHT_PAD;
     const y = (c) => ((hi - c) / span) * h;
@@ -106,7 +110,7 @@ export class Chart {
     ctx.textAlign = "right";
     for (const [c] of visible) {
       ctx.fillStyle = isCurrent(c) ? colors.textNow : isTonic(c) ? colors.tonic : colors.text;
-      ctx.font = `${isCurrent(c) ? 700 : 500} 15px system-ui, sans-serif`;
+      ctx.font = `${isCurrent(c) ? 700 : 500} ${fontPx}px system-ui, sans-serif`;
       ctx.fillText(name(c), gutter - 10, y(c));
     }
 

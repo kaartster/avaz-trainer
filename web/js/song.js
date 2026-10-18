@@ -13,13 +13,14 @@ import { keyPicker, onSettingsChange, toggleView, viewIcon } from "./sheet.js";
 import { addAttempt, deleteSong, getSong, putSong } from "./store.js";
 import { PitchStream, followCenter } from "./stream.js";
 import { OnsetDetector, SongSession, Take } from "./turns.js";
-import { $, clock, lanesAround, options, spanFor, toast } from "./ui.js";
+import { $, clock, lanesAround, options, spanFor, toast, zoomable } from "./ui.js";
 import { Yin, dbToRms, rms } from "./yin.js";
 
 const GRACE = 0.4;               // seconds after a pause when the speaker still rings
 const ONSET_DB = -50;            // how loud my voice must be to count as singing
 
 const chart = new Chart($("songChart"), () => draw());
+zoomable(chart, () => draw());
 const awake = new ScreenAwake();
 
 let song = null;                 // the stored record
@@ -286,7 +287,7 @@ function draw() {
   const p = session.phase;
   const tonic = myTonic();
   chart.draw({
-    t0, t1, center, span: spanFor(chart), lanes: lanesAround(scale(), center),
+    t0, t1, center, span: spanFor(chart), lanes: lanesAround(scale(), center, spanFor(chart)),
     name: (c) => scaleNoteName(tonic, c), view: settings.view, tolerance: tolerance(),
     layers,
     cursor: p === "play" ? session.pos : p === "sing" && take ? take.cursor : null,

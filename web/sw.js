@@ -3,14 +3,14 @@
 // Network first, so a new version shows up as soon as it is online; the cache is
 // the fallback when offline.
 
-const CACHE = "avaz-v2";
+const CACHE = "avaz-v3";
 const SHELL = [
   "./", "index.html", "css/app.css", "scales.json", "manifest.webmanifest",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png",
   "js/analyze-worker.js", "js/app.js", "js/audio.js", "js/capture-worklet.js", "js/cents.js",
   "js/chart.js", "js/demo.js", "js/feedback.js", "js/home.js", "js/library.js", "js/live.js",
   "js/notes.js", "js/offline.js", "js/player.js", "js/scales.js", "js/settings.js", "js/sheet.js",
-  "js/song.js", "js/store.js", "js/stream.js", "js/turns.js", "js/ui.js", "js/yin.js",
+  "js/song.js", "js/store.js", "js/stream.js", "js/turns.js", "js/ui.js", "js/yin.js", "js/zoom.js",
 ];
 
 self.addEventListener("install", (e) => {
