@@ -6,7 +6,8 @@ import { hzToCents } from "./cents.js";
 import { Chart } from "./chart.js";
 import { DEMO, BLOCK, FRAME } from "./live.js";
 import { octaveShift } from "./offline.js";
-import { SOLFEGE, hzToNote, keyLabel, scaleNoteName } from "./notes.js";
+import { keyText, noteName, scaleNoteLabel, t } from "./i18n.js";
+import { hzToNote } from "./notes.js";
 import { latencyReport, loadPlayer } from "./player.js";
 import { keyHz, scale, settings, tolerance } from "./settings.js";
 import { keyPicker, onSettingsChange, toggleView, viewIcon } from "./sheet.js";
@@ -45,16 +46,16 @@ const myTonic = () => (song.sameKey ? song.teacherTonicHz : keyHz(song.myKey));
 export async function enter(id) {
   active = true;
   const mine = ++token;
-  show("Loading", "");
+  show(t("loading"), "");
   setButtons();
   try {
     song = await getSong(id);
-    if (!song) throw new Error("This recording is not on this phone any more.");
+    if (!song) throw new Error(t("songMissing"));
     $("songTitle").textContent = song.name;
     player = await loadPlayer(song.blob);
   } catch (err) {
     if (mine === token) {
-      toast(err.message || "Could not open this recording.");
+      toast(err.message || t("songOpenFailed"));
       location.hash = "#/";
     }
     return;
@@ -104,7 +105,7 @@ async function startMic() {
     await mic.start(onBlock, myTonic, () => scale().positions);
   } catch (err) {
     mic = null;
-    toast(err instanceof MicError ? err.message : `Could not start the microphone: ${err.message}`);
+    toast(err instanceof MicError ? err.message : t("micStartFailed", { msg: err.message }));
     return false;
   }
   const detector = new Yin({ sampleRate: mic.sampleRate, frameLength: FRAME, silenceRms: dbToRms(settings.gate) });
@@ -235,25 +236,24 @@ function update() {
   const p = session.phase;
   if (p === "idle") {
     const atEnd = session.pos >= session.duration - 0.05;
-    show(atEnd ? "End of the song" : "Listen to the teacher",
-      atEnd ? "Tap Play to start again from the beginning." : "Tap My turn whenever you want to sing back what you heard.");
-    setButtons({ label: atEnd ? "From the start" : "Play", icon: "play" });
+    show(t(atEnd ? "endOfSong" : "listenTeacher"), t(atEnd ? "endOfSongSub" : "listenTeacherSub"));
+    setButtons({ label: t(atEnd ? "fromStart" : "play"), icon: "play" });
   } else if (p === "play") {
-    show("Listening", "Tap My turn to sing back what you just heard.");
-    setButtons({ label: "My turn", icon: "mic" }, "Back 5 s", null, "turn");
+    show(t("listening"), t("playingSub"));
+    setButtons({ label: t("myTurn"), icon: "mic" }, t("back5"), null, "turn");
   } else if (p === "wait") {
-    show("Your turn", "Sing when you are ready.");
-    setButtons({ label: "Done", icon: "check" }, "Hear again", null, "sing");
+    show(t("yourTurn"), t("yourTurnSub"));
+    setButtons({ label: t("done"), icon: "check" }, t("hearAgain"), null, "sing");
   } else if (p === "sing") {
-    show("Singing", "It stops by itself when you finish.");
-    setButtons({ label: "Done", icon: "check" }, "Hear again", null, "sing");
+    show(t("singing"), t("singingSub"));
+    setButtons({ label: t("done"), icon: "check" }, t("hearAgain"), null, "sing");
   } else if (p === "review") {
-    show(take && take.started ? "Your notes are on the chart" : "Nothing heard",
-      take && take.started ? "Blue is the teacher, green and orange is you." : "Sing again, or go on.");
-    setButtons({ label: session.reachedEnd ? "Finish" : "Continue", icon: "next" }, "Hear again", "Sing again");
+    const heard = take && take.started;
+    show(t(heard ? "notesOnChart" : "nothingHeard"), t(heard ? "notesOnChartSub" : "nothingHeardSub"));
+    setButtons({ label: t(session.reachedEnd ? "finish" : "continue"), icon: "next" }, t("hearAgain"), t("singAgain"));
   }
   $("songHint").hidden = !((p === "idle" || p === "play") && song.tonicSource === "guess");
-  $("songHint").textContent = "The teacher's key is only a guess. Tap the song name to set it.";
+  $("songHint").textContent = t("keyIsGuess");
 }
 
 /** Where the chart looks: around the playhead, or the whole stretch while I sing. */
@@ -288,7 +288,7 @@ function draw() {
   const tonic = myTonic();
   chart.draw({
     t0, t1, center, span: spanFor(chart), lanes: lanesAround(scale(), center, spanFor(chart)),
-    name: (c) => scaleNoteName(tonic, c), view: settings.view, tolerance: tolerance(),
+    name: (c) => scaleNoteLabel(tonic, c), view: settings.view, tolerance: tolerance(),
     layers,
     cursor: p === "play" ? session.pos : p === "sing" && take ? take.cursor : null,
     shade: p === "wait" || p === "sing" || p === "review" ? [session.segStart, session.segEnd] : null,
@@ -345,12 +345,10 @@ function drawTimeline() {
 // ---------------------------------------------------------------- song sheet
 
 function renderSheet() {
-  const t = song.teacherTonicHz;
-  const { index, octave } = hzToNote(t);
-  $("teacherKeyText").textContent = song.tonicSource === "name"
-    ? `${keyLabel(t)}, read from the file name.`
-    : song.tonicSource === "manual" ? `${keyLabel(t)}, set by you.`
-    : `${keyLabel(t)} is only a guess. Pick the key your teacher sang in.`;
+  const tonic = song.teacherTonicHz;
+  const { index, octave } = hzToNote(tonic);
+  const source = { name: "keyFromName", manual: "keyByYou" }[song.tonicSource] || "keyGuess";
+  $("teacherKeyText").textContent = t(source, { key: keyText(tonic) });
   $("teacherKeyText").classList.toggle("attention", song.tonicSource === "guess");
   // A key read from the file name is almost always right: keep its grid folded away.
   $("teacherKeyBox").hidden = song.tonicSource === "name" && !teacherKeyOpen;
@@ -361,8 +359,8 @@ function renderSheet() {
     keysChanged();
   });
   options($("sameKeyChoice"), [
-    { value: true, label: "Teacher's key", small: "as recorded" },
-    { value: false, label: "My own key", small: "transposed" },
+    { value: true, label: t("teacherKey"), small: t("asRecorded") },
+    { value: false, label: t("myOwnKey"), small: t("transposed") },
   ], song.sameKey, (v) => { song.sameKey = v; keysChanged(); });
   $("myKeyBox").hidden = song.sameKey;
   keyPicker($("myKeyGrid"), $("myOctaves"), song.myKey, (k) => {
@@ -370,8 +368,8 @@ function renderSheet() {
     keysChanged();
   });
   $("myKeyText").textContent = song.sameKey
-    ? `You sing exactly the teacher's notes, from ${SOLFEGE[index]}.`
-    : `You sing from ${keyLabel(keyHz(song.myKey))}. The teacher's notes are moved to your key on the chart.`;
+    ? t("singSame", { note: noteName(index) })
+    : t("singOwn", { key: keyText(keyHz(song.myKey)) });
 }
 
 function keysChanged() {
@@ -397,7 +395,7 @@ $("songKeyChip").addEventListener("click", () => {
 });
 
 $("deleteSong").addEventListener("click", async () => {
-  if (!song || !confirm(`Remove "${song.name}" from this phone?`)) return;
+  if (!song || !confirm(t("removeConfirm", { name: song.name }))) return;
   const id = song.id;
   $("songSheet").close();
   location.hash = "#/";

@@ -4,6 +4,7 @@
 import { centsToHz, foldOctave, foldToReference, hzToCents, median } from "./cents.js";
 import { demoVoice } from "./demo.js";
 import { NoteTracker, tuneWords } from "./feedback.js";
+import { dastgahName, defaultLang, keyText, keysOf, noteName, num, scaleNoteLabel, setLang, t, tuneText } from "./i18n.js";
 import { hzToNote, keyFromName, keyLabel, noteToHz, scaleNoteName, tonicFromName } from "./notes.js";
 import { analyzeSamples, estimateTonic, firstVoicedTime, medianFilter, octaveShift, removeBoundaryPins,
          removeOutliers, removeShortIslands } from "./offline.js";
@@ -516,6 +517,87 @@ test("pinch: fingers apart zooms in, together zooms out, within limits", () => {
 test("wheel down zooms out", () => {
   ok(wheelSpan(1400, 100) > 1400 && wheelSpan(1400, -100) < 1400);
   eq(wheelSpan(3500, 10000), MAX_SPAN);
+});
+
+// ---------------------------------------------------------------- languages
+
+function inLang(l, fn) {
+  setLang(l);
+  try { fn(); } finally { setLang("en"); }
+}
+
+test("every text exists in English and Farsi", () => {
+  const en = keysOf("en"), fa = keysOf("fa");
+  eq(en.filter((k) => !fa.includes(k)), [], "missing in Farsi:");
+  eq(fa.filter((k) => !en.includes(k)), [], "missing in English:");
+});
+
+test("placeholders are the same in both languages", () => {
+  const holes = (s) => (typeof s === "string" ? (s.match(/\{\w+\}/g) || []).sort() : null);
+  for (const k of keysOf("en")) {
+    let en, fa;
+    inLang("en", () => (en = t(k, {})));
+    inLang("fa", () => (fa = t(k, {})));
+    if (k !== "tries") eq(holes(fa), holes(en), `${k}:`);
+  }
+});
+
+test("t fills placeholders, Farsi with Persian digits", () => {
+  eq(t("gateHelp", { db: -55 }).startsWith("Sounds quieter than -55 dB"), true);
+  eq(t("tries", { n: 1 }), "1 try");
+  eq(t("tries", { n: 3 }), "3 tries");
+  inLang("fa", () => {
+    eq(t("tries", { n: 12 }), "۱۲ بار تمرین");
+    eq(t("keyLineOther", { teacher: "فا دیز", mine: "ر" }), "استاد در فا دیز، شما در ر");
+  });
+  eq(t("noSuchKey"), "noSuchKey", "unknown keys show themselves");
+});
+
+test("num: Persian digits, decimal mark and minus only in Farsi", () => {
+  eq(num(146.8), "146.8");
+  inLang("fa", () => {
+    eq(num(146.8), "۱۴۶٫۸");
+    eq(num("3:07"), "۳:۰۷");
+    eq(num(-55), "−۵۵");
+  });
+});
+
+test("default language from the phone", () => {
+  eq(defaultLang(["fa-IR", "en"]), "fa");
+  eq(defaultLang(["fa"]), "fa");
+  eq(defaultLang(["en-US", "fa"]), "en");
+  eq(defaultLang([]), "en");
+  eq(defaultLang(["fr"]), "en");
+});
+
+test("note names in Farsi, with koron and sori", () => {
+  const mi = noteToHz(4, 3), la = noteToHz(9, 3);
+  eq(scaleNoteLabel(mi, 150), "Fa sori", "English matches scaleNoteName");
+  inLang("fa", () => {
+    eq(noteName(2), "ر");
+    eq(noteName(6), "فا دیز");
+    eq(scaleNoteLabel(mi, 0), "می");
+    eq(scaleNoteLabel(mi, 150), "فا سری");
+    eq(scaleNoteLabel(la, 150), "سی کرن");
+    eq(keyText(noteToHz(2, 3)), "ر (D3)");
+    eq(dastgahName("dashti"), "دشتی");
+    eq(dastgahName("chahar_mezrab"), "Chahar_mezrab", "unknown names stay");
+  });
+  for (let c = -1200; c <= 2400; c += 50) {
+    eq(scaleNoteLabel(la, c), scaleNoteName(la, c), `cents ${c}`);
+  }
+});
+
+test("tune words in both languages", () => {
+  eq(tuneText(tuneWords(0)), "In tune");
+  eq(tuneText(tuneWords(-40)), "A bit low, go up");
+  eq(tuneText(tuneWords(100)), "High, go down");
+  eq(tuneText(tuneWords(NaN)), "Listening");
+  for (const d of [-200, -40, 0, 40, 200]) eq(tuneText(tuneWords(d)), tuneWords(d).words, `deviation ${d}`);
+  inLang("fa", () => {
+    eq(tuneText(tuneWords(0)), "درست روی نت");
+    eq(tuneText(tuneWords(-40)), "کمی پایین، بالاتر بخوانید");
+  });
 });
 
 // ---------------------------------------------------------------- report

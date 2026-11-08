@@ -33,14 +33,15 @@
   <link rel="modulepreload" href="js/feedback.js">
   <link rel="modulepreload" href="js/demo.js">
   <link rel="modulepreload" href="js/zoom.js">
+  <link rel="modulepreload" href="js/i18n.js">
 </head>
 <body>
 
   <!-- ================================================================ home -->
   <main id="home" class="screen home" hidden>
     <header class="bar">
-      <h1 class="brand">Avaz</h1>
-      <button id="homeSettings" class="chip" aria-label="Your key and settings">
+      <h1 class="brand" data-i18n="brand">Avaz</h1>
+      <button id="homeSettings" class="chip" data-i18n-aria="homeSettingsAria" aria-label="Your key and settings">
         <span id="homeKey">Re</span><span class="dot">·</span><span id="homeScale">Dashti</span>
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>
       </button>
@@ -52,14 +53,14 @@
           <svg class="ico" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
         </span>
         <span class="card-text">
-          <span class="card-title">Free singing</span>
-          <span class="card-sub">See your voice on the notes, no recording</span>
+          <span class="card-title" data-i18n="freeTitle">Free singing</span>
+          <span class="card-sub" data-i18n="freeSub">See your voice on the notes, no recording</span>
         </span>
       </a>
 
-      <h2 class="section-title">Teacher's recordings</h2>
+      <h2 class="section-title" data-i18n="recordingsTitle">Teacher's recordings</h2>
       <ul id="songList" class="song-list"></ul>
-      <p id="emptySongs" class="empty" hidden>
+      <p id="emptySongs" class="empty" data-i18n="emptySongs" hidden>
         Add a recording your teacher sent you. After installing the app you can also
         share a recording from WhatsApp straight to Avaz.
       </p>
@@ -69,7 +70,7 @@
       <label class="wide-btn">
         <input id="fileInput" type="file" accept="audio/*,.m4a,.opus,.ogg,.mp3,.wav,.aac,.flac" hidden>
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-        Add recording
+        <span data-i18n="addRecording">Add recording</span>
       </label>
     </footer>
   </main>
@@ -78,40 +79,40 @@
   <main id="live" class="screen app" hidden>
     <header class="bar">
       <div class="bar-start">
-        <a href="#/" class="icon-btn" aria-label="Back">
+        <a href="#/" class="icon-btn back" data-i18n-aria="back" aria-label="Back">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
         </a>
-        <button id="keyChip" class="chip" aria-label="Key and dastgah settings">
+        <button id="keyChip" class="chip" data-i18n-aria="keyChipAria" aria-label="Key and dastgah settings">
           <span id="keyName">Re</span><span class="dot">·</span><span id="scaleName">Dashti</span>
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>
         </button>
       </div>
       <div class="bar-actions">
-        <button id="droneBtn" class="icon-btn" aria-pressed="false" aria-label="Drone on the tonic">
+        <button id="droneBtn" class="icon-btn" aria-pressed="false" data-i18n-aria="droneAria" aria-label="Drone on the tonic">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h2l3-7 4 14 3-7h4"/></svg>
         </button>
-        <button id="viewBtn" class="icon-btn view-btn" aria-label="Switch between notes and curve">
+        <button id="viewBtn" class="icon-btn view-btn" data-i18n-aria="viewAria" aria-label="Switch between notes and curve">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h7M13 12h7M6 17h8"/></svg>
         </button>
       </div>
     </header>
 
     <section class="readout" aria-live="polite">
-      <div id="noteName" class="note-name idle">Ready</div>
+      <div id="noteName" class="note-name idle" data-i18n="ready">Ready</div>
       <div class="meter" aria-hidden="true">
         <div class="meter-track">
           <div class="meter-zone"></div>
           <div class="meter-mid"></div>
           <div id="meterDot" class="meter-dot"></div>
         </div>
-        <div class="meter-ends"><span>low</span><span>high</span></div>
+        <div class="meter-ends"><span data-i18n="low">low</span><span data-i18n="high">high</span></div>
       </div>
-      <div id="words" class="words">Tap the mic and sing</div>
+      <div id="words" class="words" data-i18n="tapMicAndSing">Tap the mic and sing</div>
       <div id="detail" class="detail" hidden></div>
     </section>
 
     <section class="chart-wrap">
-      <canvas id="chart" aria-label="Your pitch over the last seconds"></canvas>
+      <canvas id="chart" data-i18n-aria="liveChartAria" aria-label="Your pitch over the last seconds"></canvas>
       <div id="hint" class="hint" hidden></div>
     </section>
 
@@ -122,7 +123,7 @@
           <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
         </svg>
       </button>
-      <div id="micLabel" class="mic-label">Tap to sing</div>
+      <div id="micLabel" class="mic-label" data-i18n="tapToSing">Tap to sing</div>
     </footer>
   </main>
 
@@ -130,16 +131,16 @@
   <main id="song" class="screen song" hidden>
     <header class="bar">
       <div class="bar-start">
-        <a href="#/" class="icon-btn" aria-label="Back">
+        <a href="#/" class="icon-btn back" data-i18n-aria="back" aria-label="Back">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
         </a>
-        <button id="songKeyChip" class="chip song-chip" aria-label="Keys for this song">
+        <button id="songKeyChip" class="chip song-chip" data-i18n-aria="songKeyAria" aria-label="Keys for this song">
           <span id="songTitle" class="chip-title">Song</span>
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>
         </button>
       </div>
       <div class="bar-actions">
-        <button id="songViewBtn" class="icon-btn view-btn" aria-label="Switch between notes and curve">
+        <button id="songViewBtn" class="icon-btn view-btn" data-i18n-aria="viewAria" aria-label="Switch between notes and curve">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h7M13 12h7M6 17h8"/></svg>
         </button>
       </div>
@@ -151,12 +152,12 @@
     </section>
 
     <section class="chart-wrap">
-      <canvas id="songChart" aria-label="The teacher's notes and yours"></canvas>
+      <canvas id="songChart" data-i18n-aria="songChartAria" aria-label="The teacher's notes and yours"></canvas>
       <div id="songHint" class="hint" hidden></div>
     </section>
 
     <section class="timeline">
-      <div id="timeBar" class="time-bar" role="slider" aria-label="Position in the song" tabindex="0">
+      <div id="timeBar" class="time-bar" role="slider" data-i18n-aria="positionAria" aria-label="Position in the song" tabindex="0">
         <div id="timeDone" class="time-done"></div>
         <div id="timeSeg" class="time-seg"></div>
         <div id="timeKnob" class="time-knob"></div>
@@ -184,86 +185,90 @@
   <dialog id="settings" class="sheet">
     <form method="dialog" class="sheet-body">
       <div class="sheet-grip" aria-hidden="true"></div>
-      <h2>Your key</h2>
-      <p id="keyIntro" class="help">The note your teacher told you to sing in.</p>
-      <div id="keyGrid" class="key-grid" role="radiogroup" aria-label="Key"></div>
+      <div class="row lang-row">
+        <span class="label">Language · زبان</span>
+        <div id="langs" class="seg" role="radiogroup" aria-label="Language, زبان"></div>
+      </div>
+      <h2 data-i18n="yourKey">Your key</h2>
+      <p id="keyIntro" class="help" data-i18n="keyIntro">The note your teacher told you to sing in.</p>
+      <div id="keyGrid" class="key-grid" role="radiogroup" data-i18n-aria="keyAria" aria-label="Key"></div>
       <div class="row">
-        <span class="label">Octave</span>
-        <div id="octaves" class="seg" role="radiogroup" aria-label="Octave"></div>
+        <span class="label" data-i18n="octave">Octave</span>
+        <div id="octaves" class="seg" role="radiogroup" data-i18n-aria="octave" aria-label="Octave"></div>
       </div>
       <div class="row">
-        <span class="label">Fine tune</span>
-        <input id="fine" type="range" min="-50" max="50" step="1" aria-label="Fine tune in cents">
+        <span class="label" data-i18n="fineTune">Fine tune</span>
+        <input id="fine" type="range" min="-50" max="50" step="1" data-i18n-aria="fineTuneAria" aria-label="Fine tune in cents">
       </div>
       <p id="keyHz" class="help"></p>
 
-      <h2>Dastgah</h2>
-      <div id="scales" class="seg wrap" role="radiogroup" aria-label="Dastgah"></div>
+      <h2 data-i18n="dastgah">Dastgah</h2>
+      <div id="scales" class="seg wrap" role="radiogroup" data-i18n-aria="dastgah" aria-label="Dastgah"></div>
 
-      <h2>Feedback</h2>
-      <div id="levels" class="seg" role="radiogroup" aria-label="Feedback level"></div>
+      <h2 data-i18n="feedback">Feedback</h2>
+      <div id="levels" class="seg" role="radiogroup" data-i18n-aria="feedbackAria" aria-label="Feedback level"></div>
 
       <details>
-        <summary>More settings</summary>
+        <summary data-i18n="moreSettings">More settings</summary>
         <div class="row">
-          <span class="label">Smoothing</span>
-          <div id="smoothing" class="seg" role="radiogroup" aria-label="Smoothing"></div>
+          <span class="label" data-i18n="smoothing">Smoothing</span>
+          <div id="smoothing" class="seg" role="radiogroup" data-i18n-aria="smoothing" aria-label="Smoothing"></div>
         </div>
         <div class="row">
-          <span class="label">Seconds shown</span>
-          <div id="history" class="seg" role="radiogroup" aria-label="Seconds shown"></div>
+          <span class="label" data-i18n="secondsShown">Seconds shown</span>
+          <div id="history" class="seg" role="radiogroup" data-i18n-aria="secondsShown" aria-label="Seconds shown"></div>
         </div>
         <div class="row">
-          <span class="label">Mic gate</span>
-          <input id="gate" type="range" min="-75" max="-35" step="1" aria-label="Mic gate in dB">
+          <span class="label" data-i18n="micGate">Mic gate</span>
+          <input id="gate" type="range" min="-75" max="-35" step="1" data-i18n-aria="micGateAria" aria-label="Mic gate in dB">
         </div>
         <p id="gateHelp" class="help"></p>
         <div class="row">
-          <span class="label">Picture timing</span>
-          <input id="sync" type="range" min="-300" max="600" step="10" aria-label="Picture timing in milliseconds">
+          <span class="label" data-i18n="pictureTiming">Picture timing</span>
+          <input id="sync" type="range" min="-300" max="600" step="10" data-i18n-aria="pictureTimingAria" aria-label="Picture timing in milliseconds">
         </div>
         <p id="syncHelp" class="help"></p>
       </details>
 
-      <button class="done" value="done">Done</button>
+      <button class="done" value="done" data-i18n="done">Done</button>
     </form>
   </dialog>
 
   <dialog id="songSheet" class="sheet">
     <form method="dialog" class="sheet-body">
       <div class="sheet-grip" aria-hidden="true"></div>
-      <h2>Teacher's key</h2>
+      <h2 data-i18n="teacherKey">Teacher's key</h2>
       <div class="row tight">
         <p id="teacherKeyText" class="help grow"></p>
-        <button id="teacherKeyChange" type="button" class="opt small-opt">Change</button>
+        <button id="teacherKeyChange" type="button" class="opt small-opt" data-i18n="change">Change</button>
       </div>
       <div id="teacherKeyBox">
-        <div id="teacherKeyGrid" class="key-grid" role="radiogroup" aria-label="Teacher's key"></div>
+        <div id="teacherKeyGrid" class="key-grid" role="radiogroup" data-i18n-aria="teacherKey" aria-label="Teacher's key"></div>
         <div class="row">
-          <span class="label">Octave</span>
-          <div id="teacherOctaves" class="seg" role="radiogroup" aria-label="Teacher's octave"></div>
+          <span class="label" data-i18n="octave">Octave</span>
+          <div id="teacherOctaves" class="seg" role="radiogroup" data-i18n-aria="teacherOctaveAria" aria-label="Teacher's octave"></div>
         </div>
       </div>
 
-      <h2>I sing it in</h2>
-      <div id="sameKeyChoice" class="seg" role="radiogroup" aria-label="Key I sing in"></div>
+      <h2 data-i18n="iSingIn">I sing it in</h2>
+      <div id="sameKeyChoice" class="seg" role="radiogroup" data-i18n-aria="iSingIn" aria-label="Key I sing in"></div>
       <div id="myKeyBox">
-        <div id="myKeyGrid" class="key-grid" role="radiogroup" aria-label="My key"></div>
+        <div id="myKeyGrid" class="key-grid" role="radiogroup" data-i18n-aria="myKeyAria" aria-label="My key"></div>
         <div class="row">
-          <span class="label">Octave</span>
-          <div id="myOctaves" class="seg" role="radiogroup" aria-label="My octave"></div>
+          <span class="label" data-i18n="octave">Octave</span>
+          <div id="myOctaves" class="seg" role="radiogroup" data-i18n-aria="myOctaveAria" aria-label="My octave"></div>
         </div>
       </div>
       <p id="myKeyText" class="help"></p>
 
-      <button class="done" value="done">Done</button>
-      <button id="deleteSong" type="button" class="text-btn danger">Remove this recording</button>
+      <button class="done" value="done" data-i18n="done">Done</button>
+      <button id="deleteSong" type="button" class="text-btn danger" data-i18n="removeSong">Remove this recording</button>
     </form>
   </dialog>
 
   <div id="busy" class="busy" hidden>
     <div class="busy-card">
-      <div id="busyTitle" class="busy-title">Adding recording</div>
+      <div id="busyTitle" class="busy-title" data-i18n="addingTitle">Adding recording</div>
       <div id="busyStep" class="busy-step"></div>
       <div class="busy-bar"><div id="busyFill" class="busy-fill"></div></div>
     </div>

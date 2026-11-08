@@ -64,9 +64,10 @@ These are placeholders to replace after calibration against my teacher's recordi
 - A Progressive Web App: installable from Chrome ("Add to Home screen"), works offline through a service worker, keeps the screen awake while listening.
 - Microphone through `getUserMedia` with echo cancellation, noise suppression and auto gain turned off (they distort pitch), and an `AudioWorklet` that hands audio blocks to the main thread.
 - Live pitch: a JavaScript port of the numpy YIN in `pitch_live.py`, same parameters.
-- Pure logic lives in modules without DOM or audio access (`cents.js`, `yin.js`, `scales.js`, `notes.js`, `stream.js`, `feedback.js`, `offline.js`, `turns.js`) and is tested in `web/tests.html`, which runs in any browser. Keep their behavior identical to the Python modules of the same name.
+- Pure logic lives in modules without DOM or audio access (`cents.js`, `yin.js`, `scales.js`, `notes.js`, `stream.js`, `feedback.js`, `offline.js`, `turns.js`, `i18n.js`) and is tested in `web/tests.html`, which runs in any browser. Keep their behavior identical to the Python modules of the same name.
 - Scale positions come from `config/scales.yaml`, exported to `web/scales.json` by `avaz web`. A pytest checks the two stay in sync.
-- Per-user choices (key, dastgah, feedback level) are stored in the browser (`localStorage`), so each classmate keeps their own.
+- English and Farsi: all UI text lives in `web/js/i18n.js` (Farsi is right to left with Persian digits and Persian note names). Chart, pitch meter, seek bar and sliders stay left to right.
+- Per-user choices (key, dastgah, feedback level, language) are stored in the browser (`localStorage`), so each classmate keeps their own.
 
 ### Phone UI/UX principles
 

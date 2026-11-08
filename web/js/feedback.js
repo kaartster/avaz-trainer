@@ -47,6 +47,7 @@ export function tuneWords(deviation, level = "gentle") {
   const bit = a <= 2 * tol;
   return {
     state: low ? "low" : "high",
+    bit,                                // only a little off: "a bit low"
     words: `${bit ? "A bit " : ""}${low ? "low" : "high"}, go ${low ? "up" : "down"}`
       .replace(/^./, (s) => s.toUpperCase()),
     arrow: low ? "up" : "down",

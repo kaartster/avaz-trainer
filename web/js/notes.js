@@ -38,13 +38,19 @@ const NATURAL = new Set([0, 2, 4, 5, 7, 9, 11]);
  * koron on the natural note above (La + 150 is "Si koron").
  */
 export function scaleNoteName(tonicHz, cents) {
+  const { index, mark } = scaleNote(tonicHz, cents);
+  return mark ? `${SOLFEGE[index]} ${mark}` : SOLFEGE[index];
+}
+
+/** The parts of scaleNoteName: {index, mark}, mark "", "sori" or "koron". */
+export function scaleNote(tonicHz, cents) {
   const { index, off } = hzToNote(tonicHz * Math.pow(2, cents / 1200));
-  if (Math.abs(off) <= 25) return SOLFEGE[index];
+  if (Math.abs(off) <= 25) return { index, mark: "" };
   const lower = off > 0 ? index : (index + 11) % 12;
   const upper = (lower + 1) % 12;
-  if (NATURAL.has(lower)) return `${SOLFEGE[lower]} sori`;
-  if (NATURAL.has(upper)) return `${SOLFEGE[upper]} koron`;
-  return SOLFEGE[index];
+  if (NATURAL.has(lower)) return { index: lower, mark: "sori" };
+  if (NATURAL.has(upper)) return { index: upper, mark: "koron" };
+  return { index, mark: "" };
 }
 
 // ---------------------------------------------------------------- key from a file name

@@ -4,6 +4,7 @@ import { median } from "./cents.js";
 import { ANALYSIS, estimateTonic } from "./offline.js";
 import { keyFromName, tonicFromName } from "./notes.js";
 import { putSong } from "./store.js";
+import { t } from "./i18n.js";
 
 /** Decode any file Chrome can play (m4a, mp3, opus, wav) to mono at `sampleRate`. */
 export async function decodeMono(blob, sampleRate) {
@@ -47,19 +48,19 @@ export function songTitle(fileName) {
  * ("... دشتی فا دیز"), otherwise it is a guess the singer should check.
  */
 export async function importRecording(file, defaults, onStep = () => {}) {
-  onStep("Opening the recording", 0);
+  onStep(t("stepOpening"), 0);
   let samples;
   try {
     samples = await decodeMono(file, ANALYSIS.sampleRate);
   } catch {
-    throw new Error("This file could not be opened as audio.");
+    throw new Error(t("notAudio"));
   }
   const duration = samples.length / ANALYSIS.sampleRate;
-  onStep("Finding the teacher's notes", 0);
+  onStep(t("stepFinding"), 0);
   const { hop, f0 } = await analyzeInWorker(samples, ANALYSIS.sampleRate,
-    (p) => onStep("Finding the teacher's notes", p));
+    (p) => onStep(t("stepFinding"), p));
   const voiced = Array.from(f0).filter(Number.isFinite);
-  if (voiced.length < 50) throw new Error("No singing found in this recording.");
+  if (voiced.length < 50) throw new Error(t("noSinging"));
   let tonic = tonicFromName(file.name, median(voiced));
   const tonicSource = tonic ? "name" : "guess";
   if (!tonic) tonic = estimateTonic(f0);
@@ -80,7 +81,7 @@ export async function importRecording(file, defaults, onStep = () => {}) {
     myKey: { ...defaults },
     lastPos: 0,
   };
-  onStep("Saving", 1);
+  onStep(t("stepSaving"), 1);
   await putSong(song);
   return song;
 }

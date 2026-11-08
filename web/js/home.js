@@ -1,8 +1,9 @@
 // Home: free singing, the teacher's recordings, and adding a new one.
 
 import { importRecording } from "./library.js";
-import { SOLFEGE, hzToNote } from "./notes.js";
-import { myKey, scale, settings, titleCase } from "./settings.js";
+import { dastgahName, noteName, t } from "./i18n.js";
+import { hzToNote } from "./notes.js";
+import { myKey, scale, settings } from "./settings.js";
 import { openSettings, onSettingsChange } from "./sheet.js";
 import { countAttempts, keepStorage, listSongs } from "./store.js";
 import { $, clock, esc, toast } from "./ui.js";
@@ -15,15 +16,15 @@ export async function enter() {
 export function leave() {}
 
 function refreshHeader() {
-  $("homeKey").textContent = SOLFEGE[settings.keyIndex];
-  $("homeScale").textContent = titleCase(scale().name);
+  $("homeKey").textContent = noteName(settings.keyIndex);
+  $("homeScale").textContent = dastgahName(scale().name);
 }
 
 /** "Fa diez → you in Re" or "Re, the teacher's key". */
 export function keyLine(song) {
-  const teacher = SOLFEGE[hzToNote(song.teacherTonicHz).index];
-  if (song.sameKey) return `${teacher}, the teacher's key`;
-  return `Teacher in ${teacher}, you in ${SOLFEGE[song.myKey.keyIndex]}`;
+  const teacher = noteName(hzToNote(song.teacherTonicHz).index);
+  if (song.sameKey) return t("keyLineSame", { teacher });
+  return t("keyLineOther", { teacher, mine: noteName(song.myKey.keyIndex) });
 }
 
 async function renderList() {
@@ -31,7 +32,7 @@ async function renderList() {
   try {
     songs = await listSongs();
   } catch {
-    toast("This browser does not allow storing recordings (private window?).");
+    toast(t("noStorage"));
   }
   const list = $("songList");
   list.innerHTML = "";
@@ -42,7 +43,7 @@ async function renderList() {
     li.innerHTML = `
       <a class="song-row" href="#/song/${encodeURIComponent(song.id)}">
         <span class="song-name" dir="auto">${esc(song.name)}</span>
-        <span class="song-meta">${esc(keyLine(song))} · ${clock(song.duration)}${tries ? ` · ${tries} ${tries === 1 ? "try" : "tries"}` : ""}</span>
+        <span class="song-meta">${esc(keyLine(song))} · ${clock(song.duration)}${tries ? ` · ${esc(t("tries", { n: tries }))}` : ""}</span>
       </a>`;
     list.append(li);
   }
@@ -54,19 +55,19 @@ async function renderList() {
 export async function addRecording(file) {
   keepStorage();
   const busy = $("busy");
-  $("busyTitle").textContent = `Adding ${file.name}`;
+  $("busyTitle").textContent = t("adding", { name: file.name });
   busy.hidden = false;
   try {
     const song = await importRecording(file, myKey(), (step, p) => {
-      $("busyStep").textContent = p > 0 && p < 1 ? `${step}, ${Math.round(p * 100)}%` : step;
+      $("busyStep").textContent = p > 0 && p < 1 ? t("progress", { step, p: Math.round(p * 100) }) : step;
       $("busyFill").style.width = `${Math.round(p * 100)}%`;
     });
     if (song.tonicSource !== "name") {
-      toast("The file name doesn't say the key. Check the teacher's key at the top of the song.", 7000);
+      toast(t("noKeyInName"), 7000);
     }
     location.hash = `#/song/${encodeURIComponent(song.id)}`;
   } catch (err) {
-    toast(err.message || "Could not add this recording.", 6000);
+    toast(err.message || t("addFailed"), 6000);
   } finally {
     busy.hidden = true;
     $("busyFill").style.width = "0";
@@ -80,4 +81,7 @@ $("fileInput").addEventListener("change", (e) => {
 });
 
 $("homeSettings").addEventListener("click", openSettings);
-onSettingsChange(refreshHeader);
+onSettingsChange(() => {
+  refreshHeader();
+  if (!$("home").hidden) renderList();   // the language may have changed
+});

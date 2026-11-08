@@ -5,7 +5,8 @@ import * as live from "./live.js";
 import * as song from "./song.js";
 import { loadScales, settings } from "./settings.js";
 import { openSettings } from "./sheet.js";
-import { $ } from "./ui.js";
+import { $, applyLanguage } from "./ui.js";
+import { t } from "./i18n.js";
 
 const screens = { home, live, song };
 let current = null;
@@ -36,12 +37,13 @@ async function importShared() {
   const res = await cache.match("shared-file");
   if (!res) return;
   await cache.delete("shared-file");
-  const name = decodeURIComponent(res.headers.get("x-file-name") || "shared recording");
+  const name = decodeURIComponent(res.headers.get("x-file-name") || t("sharedRecording"));
   const blob = await res.blob();
   await home.addRecording(new File([blob], name, { type: blob.type }));
 }
 
 async function init() {
+  applyLanguage();
   await loadScales();
   window.addEventListener("hashchange", route);
   await route();

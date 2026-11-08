@@ -2,6 +2,7 @@
 // keeping the screen awake. Everything that touches Web Audio lives here.
 
 import { demoVoice } from "./demo.js";
+import { t } from "./i18n.js";
 
 let context = null;
 
@@ -26,7 +27,7 @@ export class MicSource {
   /** Ask for the mic and start posting blocks to `onBlock(Float32Array)`. */
   async start(onBlock) {
     if (!window.isSecureContext || !navigator.mediaDevices) {
-      throw new MicError("insecure", "The microphone only works over https or on localhost.");
+      throw new MicError("insecure", t("micInsecure"));
     }
     const ctx = audioContext();
     try {
@@ -39,8 +40,7 @@ export class MicSource {
     } catch (err) {
       const blocked = err && (err.name === "NotAllowedError" || err.name === "SecurityError");
       throw new MicError(blocked ? "blocked" : "missing",
-        blocked ? "Microphone access is blocked. Allow it for this site in Chrome's settings."
-                : "No microphone found.");
+        blocked ? t("micBlocked") : t("micMissing"));
     }
     await ctx.audioWorklet.addModule(new URL("./capture-worklet.js", import.meta.url));
     const source = ctx.createMediaStreamSource(this.stream);

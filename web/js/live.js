@@ -3,8 +3,8 @@
 import { MicSource, DemoSource, Drone, ScreenAwake, MicError } from "./audio.js";
 import { Chart } from "./chart.js";
 import { NoteTracker, tuneWords } from "./feedback.js";
-import { SOLFEGE, scaleNoteName } from "./notes.js";
-import { scale, settings, titleCase, tolerance, tonicHz } from "./settings.js";
+import { dastgahName, noteName, num, scaleNoteLabel, t, tuneText } from "./i18n.js";
+import { scale, settings, tolerance, tonicHz } from "./settings.js";
 import { onSettingsChange, openSettings, toggleView, viewIcon } from "./sheet.js";
 import { LiveTrace, PitchStream, followCenter } from "./stream.js";
 import { $, lanesAround, spanFor, toast, zoomable } from "./ui.js";
@@ -51,7 +51,7 @@ async function startListening() {
     await source.start(onBlock, tonicHz, () => scale().positions);
   } catch (err) {
     source = null;
-    toast(err instanceof MicError ? err.message : `Could not start: ${err.message}`);
+    toast(err instanceof MicError ? err.message : t("couldNotStart", { msg: err.message }));
     return;
   }
   if (!active) return stopListening();
@@ -87,8 +87,8 @@ function onBlock(block) {
 
 function setListeningUi(on) {
   $("micBtn").classList.toggle("on", on);
-  $("micBtn").setAttribute("aria-label", on ? "Stop listening" : "Start listening");
-  $("micLabel").textContent = on ? (DEMO ? "Demo voice, tap to stop" : "Listening, tap to stop") : "Tap to sing";
+  $("micBtn").setAttribute("aria-label", t(on ? "stopListening" : "startListening"));
+  $("micLabel").textContent = t(on ? (DEMO ? "demoTapStop" : "listeningTapStop") : "tapToSing");
   $("micLevel").style.setProperty("--level", 0);
   if (!on) showReadout(null);
   updateHint();
@@ -104,7 +104,7 @@ function draw() {
   chart.draw({
     t0: now - settings.history, t1: now, center, span: spanFor(chart),
     lanes: lanesAround(scale(), center, spanFor(chart)), view: settings.view, tolerance: tolerance(),
-    name: (c) => scaleNoteName(tonic, c),
+    name: (c) => scaleNoteLabel(tonic, c),
     current: tracker.current && now - lastVoiceAt < 1.5 ? tracker.current.position : null,
     layers: [{ times: trace.times, cents: trace.cents, role: "mine" }],
   });
@@ -130,8 +130,8 @@ function showReadout(cents) {
   if (!stream) {
     readout.className = "readout";
     name.className = "note-name idle";
-    name.textContent = "Ready";
-    $("words").textContent = "Tap the mic and sing";
+    name.textContent = t("ready");
+    $("words").textContent = t("tapMicAndSing");
     dot.classList.remove("on");
     detail.hidden = true;
     return;
@@ -141,8 +141,8 @@ function showReadout(cents) {
   if (!Number.isFinite(cents)) {
     readout.className = "readout";
     name.className = note && silentFor < 3 ? "note-name faded" : "note-name idle";
-    name.textContent = note && silentFor < 3 ? scaleNoteName(tonicHz(), note.position) : "Listening";
-    $("words").textContent = note && silentFor < 3 ? "" : "Sing a long note";
+    name.textContent = note && silentFor < 3 ? scaleNoteLabel(tonicHz(), note.position) : t("listening");
+    $("words").textContent = note && silentFor < 3 ? "" : t("singLongNote");
     dot.classList.remove("on");
     detail.hidden = true;
     return;
@@ -151,31 +151,30 @@ function showReadout(cents) {
   const tune = tuneWords(dev, settings.level);
   readout.className = `readout state-${tune.state}`;
   name.className = "note-name";
-  name.textContent = scaleNoteName(tonicHz(), note.position);
-  $("words").textContent = tune.words;
+  name.textContent = scaleNoteLabel(tonicHz(), note.position);
+  $("words").textContent = tuneText(tune);
   // The meter spans 100 cents either side of the note.
   dot.style.left = `${50 + Math.max(-46, Math.min(46, dev / 2))}%`;
   dot.classList.add("on");
   detail.hidden = settings.level !== "detailed";
   if (!detail.hidden) {
     const hz = tonicHz() * Math.pow(2, cents / 1200);
-    detail.textContent = `${dev >= 0 ? "+" : ""}${dev.toFixed(0)} cents · ${hz.toFixed(1)} Hz`;
+    detail.textContent = t("detail", { dev: num(`${dev >= 0 ? "+" : ""}${dev.toFixed(0)}`), hz: num(hz.toFixed(1)) });
   }
 }
 
 function updateHint() {
   const hint = $("hint");
   let text = "";
-  if (!stream) text = DEMO ? "Demo mode: tap the button to see a synthetic singer on the chart."
-                           : "Your voice will draw here. Hold a note and watch its lane light up.";
-  else if (drone.playing) text = "Use headphones with the drone, or the mic hears it too.";
+  if (!stream) text = t(DEMO ? "hintDemo" : "hintVoice");
+  else if (drone.playing) text = t("hintHeadphones");
   hint.textContent = text;
   hint.hidden = !text;
 }
 
 function refresh() {
-  $("keyName").textContent = SOLFEGE[settings.keyIndex];
-  $("scaleName").textContent = titleCase(scale().name);
+  $("keyName").textContent = noteName(settings.keyIndex);
+  $("scaleName").textContent = dastgahName(scale().name);
   $("droneBtn").setAttribute("aria-pressed", String(drone.playing));
   viewIcon($("viewBtn"));
   const zone = $("live").querySelector(".meter-zone");
@@ -197,7 +196,7 @@ $("droneBtn").addEventListener("click", () => {
 
 $("viewBtn").addEventListener("click", () => {
   toggleView();
-  toast(settings.view === "notes" ? "Notes view" : "Curve view", 1200);
+  toast(t(settings.view === "notes" ? "notesView" : "curveView"), 1200);
 });
 
 $("keyChip").addEventListener("click", openSettings);
@@ -213,5 +212,6 @@ onSettingsChange(() => {
     trace.historySeconds = settings.history;
   }
   drone.setTonic(tonicHz());
+  if (active) setListeningUi(Boolean(stream));   // the language may have changed
   refresh();
 });

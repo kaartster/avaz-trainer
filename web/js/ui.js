@@ -1,10 +1,23 @@
 // Small UI helpers shared by the screens.
 
+import { isRtl, lang, num, t } from "./i18n.js";
 import { laneEdges } from "./scales.js";
 import { saveSettings, settings } from "./settings.js";
 import { attachZoom, clampSpan, defaultSpan } from "./zoom.js";
 
 export const $ = (id) => document.getElementById(id);
+
+/** Language and direction of the page, and every text marked with data-i18n. */
+export function applyLanguage() {
+  const root = document.documentElement;
+  root.lang = lang();
+  root.dir = isRtl() ? "rtl" : "ltr";
+  document.title = t("appTitle");
+  for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll("[data-i18n-aria]")) {
+    el.setAttribute("aria-label", t(el.dataset.i18nAria));
+  }
+}
 
 /** Fill `container` with radio-like option buttons. */
 export function options(container, items, current, onPick) {
@@ -62,7 +75,7 @@ export function zoomable(chart, redraw) {
 /** "3:07" */
 export function clock(seconds) {
   const s = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  return num(`${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`);
 }
 
 /** Escape text for innerHTML. */

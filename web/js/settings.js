@@ -1,6 +1,7 @@
 // Settings shared by all screens, kept in the browser (each singer has their own).
 
 import { LEVELS } from "./feedback.js";
+import { defaultLang, setLang } from "./i18n.js";
 import { noteToHz } from "./notes.js";
 import { scalesFromJson } from "./scales.js";
 
@@ -16,6 +17,7 @@ const DEFAULTS = {
   smoothing: 3, history: 6, gate: -55, configured: false,
   sync: 0,                           // ms added to the song playhead ("picture timing")
   span: null,                        // cents shown top to bottom; null = at least one octave
+  lang: null,                        // "en" or "fa"; null = from the phone's language
 };
 
 function load() {
@@ -27,6 +29,10 @@ function load() {
 }
 
 export const settings = load();
+
+/** The language chosen in the settings sheet, or the phone's own. */
+export const chosenLang = () => settings.lang || defaultLang(navigator.languages || [navigator.language]);
+setLang(chosenLang());
 
 export function saveSettings() {
   try {
@@ -50,4 +56,3 @@ export const myKey = () => ({ keyIndex: settings.keyIndex, octave: settings.octa
 export const tonicHz = () => keyHz(settings);
 export const scale = () => scales[settings.scale] || Object.values(scales)[0];
 export const tolerance = () => (LEVELS[settings.level] || LEVELS.gentle).tolerance;
-export const titleCase = (s) => s.charAt(0).toUpperCase() + s.slice(1);

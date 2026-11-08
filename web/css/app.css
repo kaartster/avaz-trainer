@@ -69,7 +69,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
-  min-height: 48px; padding: 0 12px 0 16px;
+  min-height: 48px; padding-block: 0; padding-inline: 16px 12px;
   background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
   font-size: 17px; font-weight: 600;
 }
@@ -216,7 +216,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .mic { width: 60px; height: 60px; }
   .mic .mic-ico { width: 28px; height: 28px; }
   .bar { padding: 8px 10px; }
-  .chip { min-height: 44px; font-size: 16px; padding: 0 8px 0 12px; }
+  .chip { min-height: 44px; font-size: 16px; padding-inline: 12px 8px; }
   .icon-btn { width: 44px; height: 44px; }
   .mic-label { display: none; }
 }
@@ -426,3 +426,16 @@ summary { min-height: 44px; display: flex; align-items: center; color: var(--tex
 .busy-step { font-size: 14px; color: var(--text-dim); margin: 6px 0 14px; }
 .busy-bar { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
 .busy-fill { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+
+/* ---------- Farsi: right to left ---------- */
+
+/* Pitch and time stay physical: low on the left, time flowing to the right,
+   sliders growing to the right, like the charts. */
+.meter, .timeline, input[type="range"] { direction: ltr; }
+/* The back arrow points the way back, which is right in RTL. */
+[dir="rtl"] .back .ico { transform: scaleX(-1); }
+/* Spacing between letters breaks the joined Persian script. */
+[dir="rtl"] .note-name, [dir="rtl"] .brand,
+[dir="rtl"] .sheet h2, [dir="rtl"] .section-title { letter-spacing: 0; }
+[dir="rtl"] .brand { margin: 0 6px 0 0; }
+.lang-row { margin-bottom: 4px; }
