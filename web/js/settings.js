@@ -1,7 +1,7 @@
 // Settings shared by all screens, kept in the browser (each singer has their own).
 
 import { LEVELS } from "./feedback.js";
-import { defaultLang, setLang } from "./i18n.js";
+import { DEFAULT_LANG, setLang } from "./i18n.js";
 import { noteToHz } from "./notes.js";
 import { scalesFromJson } from "./scales.js";
 
@@ -17,7 +17,7 @@ const DEFAULTS = {
   smoothing: 3, history: 6, gate: -55, configured: false,
   sync: 0,                           // ms added to the song playhead ("picture timing")
   span: null,                        // cents shown top to bottom; null = at least one octave
-  lang: null,                        // "en" or "fa"; null = from the phone's language
+  lang: null,                        // "en" or "fa"; null = Farsi (DEFAULT_LANG)
 };
 
 function load() {
@@ -30,8 +30,8 @@ function load() {
 
 export const settings = load();
 
-/** The language chosen in the settings sheet, or the phone's own. */
-export const chosenLang = () => settings.lang || defaultLang(navigator.languages || [navigator.language]);
+/** The language chosen in the settings sheet, Farsi until then. */
+export const chosenLang = () => settings.lang || DEFAULT_LANG;
 setLang(chosenLang());
 
 export function saveSettings() {

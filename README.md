@@ -276,8 +276,8 @@ for example after changing `tonic.mine_hz` in settings.
 be added to the home screen. Pick your key and dastgah in the sheet that opens
 on first use.
 
-The app speaks English or Farsi (فارسی). It starts in Farsi on a phone set to
-Persian; switch at the top of the settings sheet. In Farsi the screens read
+The app speaks English or Farsi (فارسی). It starts in Farsi; switch to English at
+the top of the settings sheet. In Farsi the screens read
 right to left with Persian note names (ر، می کرن، فا سری) and digits.
 
 **Free singing** shows the note you are on (Re, Mi koron, Fa sori ...), plain

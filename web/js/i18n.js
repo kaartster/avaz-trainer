@@ -331,11 +331,8 @@ export function setLang(l) {
   current = l in STRINGS ? l : "en";
 }
 
-/** "fa" for a phone set to Persian, otherwise "en". `languages` like navigator.languages. */
-export function defaultLang(languages = []) {
-  const first = (languages[0] || "").toLowerCase();
-  return first === "fa" || first.startsWith("fa-") ? "fa" : "en";
-}
+/** The app starts in Farsi until the singer picks a language in the settings sheet. */
+export const DEFAULT_LANG = "fa";
 
 /** Digits in the current language: "3:07" stays, "۳:۰۷" in Farsi. */
 export function num(x) {

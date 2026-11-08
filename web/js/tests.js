@@ -4,7 +4,7 @@
 import { centsToHz, foldOctave, foldToReference, hzToCents, median } from "./cents.js";
 import { demoVoice } from "./demo.js";
 import { NoteTracker, tuneWords } from "./feedback.js";
-import { dastgahName, defaultLang, keyText, keysOf, noteName, num, scaleNoteLabel, setLang, t, tuneText } from "./i18n.js";
+import { DEFAULT_LANG, dastgahName, keyText, keysOf, noteName, num, scaleNoteLabel, setLang, t, tuneText } from "./i18n.js";
 import { hzToNote, keyFromName, keyLabel, noteToHz, scaleNoteName, tonicFromName } from "./notes.js";
 import { analyzeSamples, estimateTonic, firstVoicedTime, medianFilter, octaveShift, removeBoundaryPins,
          removeOutliers, removeShortIslands } from "./offline.js";
@@ -609,12 +609,8 @@ test("num: Persian digits, decimal mark and minus only in Farsi", () => {
   });
 });
 
-test("default language from the phone", () => {
-  eq(defaultLang(["fa-IR", "en"]), "fa");
-  eq(defaultLang(["fa"]), "fa");
-  eq(defaultLang(["en-US", "fa"]), "en");
-  eq(defaultLang([]), "en");
-  eq(defaultLang(["fr"]), "en");
+test("the app starts in Farsi", () => {
+  eq(DEFAULT_LANG, "fa");
 });
 
 test("note names in Farsi, with koron and sori", () => {
