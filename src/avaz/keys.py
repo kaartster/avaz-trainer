@@ -60,8 +60,14 @@ def scale_note_name(tonic_hz: float, cents: float) -> str:
     "Fa diez"). Notes in between are named the Persian way: sori on the natural
     note below (Mi + 150 cents is "Fa sori"), otherwise koron on the natural note
     above (La + 150 cents is "Si koron").
+
+    Names follow the key, the tonic rounded to the nearest semitone: a teacher a
+    little flat of Fa diez is still in Fa diez, and the tonic stays "Fa diez"
+    instead of becoming "Fa sori".
     """
-    index, _, off = hz_to_note(float(tonic_hz) * 2.0 ** (float(cents) / 1200.0))
+    key_index, key_octave, _ = hz_to_note(float(tonic_hz))
+    key_hz = note_to_hz(key_index, key_octave)
+    index, _, off = hz_to_note(key_hz * 2.0 ** (float(cents) / 1200.0))
     if abs(off) <= 25:
         return SOLFEGE[index]
     lower = index if off > 0 else (index - 1) % 12

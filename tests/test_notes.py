@@ -61,6 +61,18 @@ def test_scale_note_name_with_koron_and_sori():
     assert scale_note_name(167.0, 0) == "Mi"            # the teacher's Mi, 23 cents sharp
 
 
+def test_scale_note_names_follow_the_key_not_the_exact_tonic():
+    fa_diez = 185.0 * 2 ** (-35 / 1200)                # a guessed tonic 35 cents flat
+    assert scale_note_name(fa_diez, 0) == "Fa diez"     # not "Fa sori"
+    assert scale_note_name(fa_diez, 150) == "Sol sori"  # Dashti on Fa diez
+    assert scale_note_name(fa_diez, 300) == "La"
+    assert scale_note_name(fa_diez, 800) == "Re"
+    re_sharp = 146.83 * 2 ** (30 / 1200)                # my Re with fine tune +30
+    assert scale_note_name(re_sharp, 300) == "Fa"
+    assert scale_note_name(re_sharp, 150) == "Mi koron"
+    assert scale_note_name(re_sharp, 0) == "Re"
+
+
 def test_break_jumps_gaps_one_frame_octave_slips():
     from avaz.notes import break_jumps
     t = np.arange(6) * 0.006

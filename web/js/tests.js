@@ -132,6 +132,20 @@ test("scale note names with koron and sori", () => {
   eq(scaleNoteName(167.0, 0), "Mi");
 });
 
+test("scale note names follow the key, not the exact tonic", () => {
+  const faDiez = 185.0 * Math.pow(2, -35 / 1200);    // a guessed tonic 35 cents flat
+  eq(scaleNoteName(faDiez, 0), "Fa diez", "not Fa sori");
+  eq(scaleNoteName(faDiez, 150), "Sol sori");
+  eq(scaleNoteName(faDiez, 300), "La");
+  eq(scaleNoteName(faDiez, 800), "Re");
+  const reSharp = 146.83 * Math.pow(2, 30 / 1200);   // my Re with fine tune +30
+  eq(scaleNoteName(reSharp, 300), "Fa");
+  eq(scaleNoteName(reSharp, 150), "Mi koron");
+  eq(scaleNoteName(reSharp, 0), "Re");
+  setLang("fa");
+  try { eq(scaleNoteLabel(faDiez, 0), "فا دیز"); } finally { setLang("en"); }
+});
+
 // ---------------------------------------------------------------- scales
 
 const shur = new Scale("shur", [0, 150, 300, 500, 700, 800, 1000, 1200]);

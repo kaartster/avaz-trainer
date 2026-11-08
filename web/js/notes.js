@@ -44,7 +44,10 @@ export function scaleNoteName(tonicHz, cents) {
 
 /** The parts of scaleNoteName: {index, mark}, mark "", "sori" or "koron". */
 export function scaleNote(tonicHz, cents) {
-  const { index, off } = hzToNote(tonicHz * Math.pow(2, cents / 1200));
+  // Names follow the key, the tonic rounded to the nearest semitone: a teacher a
+  // little flat of Fa diez is still in Fa diez, not "Fa sori".
+  const key = hzToNote(tonicHz);
+  const { index, off } = hzToNote(noteToHz(key.index, key.octave) * Math.pow(2, cents / 1200));
   if (Math.abs(off) <= 25) return { index, mark: "" };
   const lower = off > 0 ? index : (index + 11) % 12;
   const upper = (lower + 1) % 12;
