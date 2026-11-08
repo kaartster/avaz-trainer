@@ -3,7 +3,7 @@
 // Network first, so a new version shows up as soon as it is online; the cache is
 // the fallback when offline.
 
-const CACHE = "avaz-v4";
+const CACHE = "avaz-v5";
 const SHELL = [
   "./", "index.html", "css/app.css", "scales.json", "manifest.webmanifest",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png",

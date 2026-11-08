@@ -9,9 +9,11 @@
 import { firstVoicedTime } from "./offline.js";
 
 export class SongSession {
-  constructor(duration, startAt = 0) {
+  /** `begin`: where the song starts for me; the intro before it is skipped. */
+  constructor(duration, startAt = 0, begin = 0) {
     this.duration = duration;
-    this.pos = Math.min(Math.max(0, startAt), duration);
+    this.begin = Math.min(Math.max(0, begin), duration);
+    this.pos = Math.min(Math.max(this.begin, startAt), duration);
     this.phase = "idle";
     this.segStart = this.pos;
     this.segEnd = this.pos;
@@ -46,7 +48,7 @@ export class SongSession {
   /** The one big button: Play, My turn, Done, Continue. */
   primary() {
     if (this.phase === "idle") {
-      if (this.pos >= this.duration) this.pos = 0;
+      if (this.pos >= this.duration) this.pos = this.begin;
       this.segStart = this.pos;
       this.phase = "play";
     } else if (this.phase === "play") {
@@ -78,7 +80,7 @@ export class SongSession {
 
   /** Jump to `t` seconds. While playing, the stretch starts again there. */
   seek(t) {
-    t = Math.min(Math.max(0, t), this.duration);
+    t = Math.min(Math.max(this.begin, t), this.duration);
     if (this.phase === "play") {
       this.pos = this.segStart = t;
       this.autoPauseAt = null;
@@ -86,6 +88,26 @@ export class SongSession {
       this.pos = this.segStart = this.segEnd = t;
       this.phase = "idle";
     }
+  }
+
+  /** Stop playing and stay where I am. */
+  halt() {
+    this.segStart = this.segEnd = this.pos;
+    this.autoPauseAt = null;
+    this.reachedEnd = false;
+    this.phase = "idle";
+  }
+
+  /** Skip everything before `t` seconds (0 keeps the whole recording). */
+  setBegin(t) {
+    this.begin = Math.min(Math.max(0, t), Math.max(0, this.duration - 1));
+    if (this.pos < this.begin) this.seek(this.begin);
+  }
+
+  /** Where `pos` is as a fraction of the part I practice, 0 at begin, 1 at the end. */
+  fraction(pos) {
+    const len = this.duration - this.begin;
+    return len > 0 ? Math.min(1, Math.max(0, (pos - this.begin) / len)) : 0;
   }
 }
 

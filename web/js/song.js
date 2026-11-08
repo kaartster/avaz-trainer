@@ -62,8 +62,8 @@ export async function enter(id) {
   }
   if (mine !== token) return;
   computeTeacher();
-  session = new SongSession(player.duration, song.lastPos || 0);
-  $("timeLen").textContent = clock(player.duration);
+  session = new SongSession(player.duration, song.lastPos || 0, song.begin || 0);
+  $("timeLen").textContent = clock(player.duration - session.begin);
   center = 100;
   viewIcon($("songViewBtn"));
   player.sync = settings.sync / 1000;
@@ -78,20 +78,20 @@ export function leave() {
   if (player) player.stop();
   stopMic();
   awake.release();
-  if (song && session) {
+  if (song && session && !song.removed) {   // not after "Remove this recording"
     song.lastPos = session.phase === "play" ? session.segStart : session.pos;
     putSong(song).catch(() => {});
   }
   song = player = session = take = null;
 }
 
-/** The teacher's curve in cents from the teacher's own tonic. */
+/** The teacher's curve in cents from the teacher's own tonic. The skipped intro is left out. */
 function computeTeacher() {
-  const n = song.f0.length;
+  const n = song.f0.length, begin = song.begin || 0;
   const times = new Float32Array(n), cents = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     times[i] = i * song.hop;
-    cents[i] = hzToCents(song.f0[i], teacherTonic());
+    cents[i] = times[i] < begin ? NaN : hzToCents(song.f0[i], teacherTonic());
   }
   teacher = { times, cents };
 }
@@ -328,18 +328,18 @@ function frame(ts, loop) {
 }
 
 function drawTimeline() {
-  const d = session.duration || 1;
   const pos = session.phase === "sing" && take ? Math.min(take.cursor, session.segEnd) : session.pos;
-  $("timeDone").style.width = `${(100 * pos) / d}%`;
-  $("timeKnob").style.left = `${(100 * pos) / d}%`;
+  const at = (x) => `${100 * session.fraction(x)}%`;
+  $("timeDone").style.width = at(pos);
+  $("timeKnob").style.left = at(pos);
   const seg = $("timeSeg");
   const showSeg = session.phase !== "play" && session.phase !== "idle";
   seg.hidden = !showSeg;
   if (showSeg) {
-    seg.style.left = `${(100 * session.segStart) / d}%`;
-    seg.style.width = `${(100 * (session.segEnd - session.segStart)) / d}%`;
+    seg.style.left = at(session.segStart);
+    seg.style.width = `${100 * (session.fraction(session.segEnd) - session.fraction(session.segStart))}%`;
   }
-  $("timePos").textContent = clock(pos);
+  $("timePos").textContent = clock(pos - session.begin);
 }
 
 // ---------------------------------------------------------------- song sheet
@@ -370,7 +370,36 @@ function renderSheet() {
   $("myKeyText").textContent = song.sameKey
     ? t("singSame", { note: noteName(index) })
     : t("singOwn", { key: keyText(keyHz(song.myKey)) });
+  renderStart();
 }
+
+/** The intro cut: where the song starts, set by hand from the current position. */
+function renderStart() {
+  const begin = session.begin;
+  $("startText").textContent = begin > 0 ? t("startAt", { time: clock(begin) }) : t("startWhole");
+  $("startHere").textContent = t("startHere", { time: clock(session.pos) });
+  $("startHere").disabled = Math.abs(session.pos - begin) < 0.5 || session.pos >= session.duration - 1;
+  $("startEarlier").hidden = $("startLater").hidden = $("startReset").hidden = begin <= 0;
+}
+
+function setBegin(time) {
+  if (player) player.stop();
+  if (session.phase === "play") session.halt();
+  session.setBegin(time);
+  song.begin = session.begin;
+  song.lastPos = session.pos;
+  take = null;
+  computeTeacher();
+  putSong(song).catch(() => {});
+  $("timeLen").textContent = clock(session.duration - session.begin);
+  renderStart();
+  update();
+}
+
+$("startHere").addEventListener("click", () => setBegin(session.pos));
+$("startEarlier").addEventListener("click", () => setBegin(session.begin - 1));
+$("startLater").addEventListener("click", () => setBegin(session.begin + 1));
+$("startReset").addEventListener("click", () => setBegin(0));
 
 function keysChanged() {
   computeTeacher();
@@ -388,7 +417,13 @@ $("teacherKeyChange").addEventListener("click", () => {
 });
 
 $("songKeyChip").addEventListener("click", () => {
-  if (!song) return;
+  if (!song || !session) return;
+  if (session.phase === "play") {
+    // Stop where I am, so "Start here" means this spot.
+    player.stop();
+    session.halt();
+    update();
+  }
   teacherKeyOpen = false;
   renderSheet();
   $("songSheet").showModal();
@@ -397,6 +432,7 @@ $("songKeyChip").addEventListener("click", () => {
 $("deleteSong").addEventListener("click", async () => {
   if (!song || !confirm(t("removeConfirm", { name: song.name }))) return;
   const id = song.id;
+  song.removed = true;
   $("songSheet").close();
   location.hash = "#/";
   await deleteSong(id);
@@ -412,7 +448,7 @@ $("songViewBtn").addEventListener("click", toggleView);
 function seekFromEvent(e) {
   if (!session) return;
   const r = $("timeBar").getBoundingClientRect();
-  const t = ((e.clientX - r.left) / r.width) * session.duration;
+  const t = session.begin + ((e.clientX - r.left) / r.width) * (session.duration - session.begin);
   const playing = session.phase === "play";
   take = null;
   session.seek(t);

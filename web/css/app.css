@@ -251,6 +251,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .opt small { display: block; font-size: 12px; color: var(--text-dim); }
 .opt[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .opt[aria-checked="true"] small { color: var(--accent-ink); }
+.opt:disabled { opacity: .4; cursor: default; }
 
 .seg { display: flex; gap: 8px; }
 .seg .opt { flex: 1; }

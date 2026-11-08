@@ -435,6 +435,39 @@ test("octave shift moves my median next to the teacher's", () => {
 
 // ---------------------------------------------------------------- singing after the teacher
 
+test("song session: a skipped intro is never played or seeked into", () => {
+  const s = new SongSession(60, 0, 12);
+  eq([s.pos, s.begin], [12, 12], "a saved position before the cut moves to it");
+  s.seek(3);
+  eq(s.pos, 12, "seek clamps to the start");
+  s.seek(30);
+  s.setBegin(40);
+  eq([s.pos, s.phase], [40, "idle"], "moving the start past me takes me along");
+  s.setBegin(20);
+  eq(s.pos, 40, "an earlier start leaves me where I am");
+  s.primary();
+  ok(s.tick(60.2));
+  s.primary();
+  s.primary();
+  s.primary();
+  eq([s.phase, s.pos], ["play", 20], "from the start means from the cut");
+  s.setBegin(-5);
+  eq(s.begin, 0, "no negative start");
+  s.setBegin(100);
+  eq(s.begin, 59, "at least a second is left to play");
+  eq([new SongSession(60, 0, 20).fraction(20), new SongSession(60, 0, 20).fraction(40)], [0, 0.5]);
+});
+
+test("song session: halt stops where I am", () => {
+  const s = new SongSession(60, 5);
+  s.primary();
+  s.tick(9);
+  s.halt();
+  eq([s.phase, s.pos, s.segStart, s.segEnd], ["idle", 9, 9, 9]);
+  s.primary();
+  eq([s.phase, s.pos], ["play", 9]);
+});
+
 test("song session: play, my turn, sing, review, continue", () => {
   const s = new SongSession(60);
   s.primary();
